@@ -1,7 +1,7 @@
 //! Platform-specific operations.
 
 cfg_if::cfg_if! {
-    if #[cfg(target_arch = "aarch64")]{
+    if #[cfg(all(target_arch = "aarch64", not(platform_family = "aarch64-sel4")))]{
         mod aarch64_common;
     }
 }
@@ -25,6 +25,9 @@ cfg_if::cfg_if! {
     } else if #[cfg(all(target_arch = "aarch64", platform_family = "aarch64-phytium-pi"))] {
         mod aarch64_phytium_pi;
         pub use self::aarch64_phytium_pi::*;
+    } else if #[cfg(all(target_arch = "aarch64", platform_family = "aarch64-sel4"))] {
+        mod aarch64_sel4;
+        pub use self::aarch64_sel4::*;
     } else if #[cfg(all(target_arch = "loongarch64", platform_family = "loongarch64-qemu-virt"))] {
         mod loongarch64_qemu_virt;
         pub use self::loongarch64_qemu_virt::*;
