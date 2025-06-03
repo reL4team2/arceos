@@ -9,7 +9,18 @@ pub mod console;
 pub mod misc {
     /// Shutdown the whole system, including all CPUs.
     pub fn terminate() -> ! {
-        unimplemented!()
+        sel4::sys::seL4_CallWithMRsWithoutIPCBuffer(
+            18,
+            sel4::sys::seL4_MessageInfo::new(0x204, 0, 0, 0),
+            None,
+            None,
+            None,
+            None,
+        );
+
+        unreachable!()
+        // unimplemented!()
+        // common::root::shutdown()
     }
 }
 

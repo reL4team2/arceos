@@ -8,7 +8,7 @@ unsafe extern "C" {
 #[unsafe(link_section = ".text.boot")]
 pub(crate) unsafe extern "C" fn _start() {
     crate::mem::clear_bss();
-    crate::cpu::init_primary(0);
+    // crate::cpu::init_primary(0);
     super::pl011::init_early();
     rust_main(0, 0);
 }

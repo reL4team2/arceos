@@ -88,7 +88,9 @@ include scripts/make/platform.mk
 ifeq ($(ARCH), x86_64)
   TARGET := x86_64-unknown-none
 else ifeq ($(ARCH), aarch64)
-  ifeq ($(findstring fp_simd,$(FEATURES)),)
+  ifeq ($(PLATFORM), aarch64-sel4)
+	TARGET := aarch64-sel4
+  else ifeq ($(findstring fp_simd,$(FEATURES)),)
     TARGET := aarch64-unknown-none-softfloat
   else
     TARGET := aarch64-unknown-none

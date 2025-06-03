@@ -38,7 +38,7 @@ mmio-regions = [] # [(uint, uint)]
 # VirtIO MMIO regions with format (`base_paddr`, `size`).
 virtio-mmio-regions = [] # [(uint, uint)]
 # UART Address
-uart-paddr = 0x0900_0000 # uint
+uart-paddr = 0x1_2020_0000 # uint
 # UART IRQ number
 uart-irq = 1 # uint
 

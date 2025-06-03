@@ -2,6 +2,8 @@
 resolver = "2"
 
 members = [
+    "crates/kernel_guard",
+
     "modules/axalloc",
     "modules/axconfig",
     "modules/axdisplay",
@@ -64,6 +66,14 @@ axruntime = { path = "modules/axruntime" }
 axsync = { path = "modules/axsync" }
 axtask = { path = "modules/axtask" }
 axdma = { path = "modules/axdma" }
+
+sel4 = { git = "https://github.com/seL4/rust-sel4", rev = "5b9ebfd" }
+
+[patch.crates-io]
+kernel_guard = { path = "crates/kernel_guard" }
+
+[patch."https://github.com/seL4/rust-sel4"]
+sel4 = { git = "https://github.com/yfblock/rust-sel4", rev = "1280281" }
 
 [profile.release]
 lto = true
