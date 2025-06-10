@@ -9,18 +9,7 @@ pub mod console;
 pub mod misc {
     /// Shutdown the whole system, including all CPUs.
     pub fn terminate() -> ! {
-        sel4::sys::seL4_CallWithMRsWithoutIPCBuffer(
-            18,
-            sel4::sys::seL4_MessageInfo::new(0x204, 0, 0, 0),
-            None,
-            None,
-            None,
-            None,
-        );
-
-        unreachable!()
-        // unimplemented!()
-        // common::root::shutdown()
+        common::root::shutdown()
     }
 }
 
@@ -33,7 +22,15 @@ pub mod mp {
 pub mod mem {
     /// Returns platform-specific memory regions.
     pub(crate) fn platform_regions() -> impl Iterator<Item = crate::mem::MemRegion> {
-        core::iter::empty()
+        use crate::mem::MemRegionFlags;
+        core::iter::once(crate::mem::MemRegion {
+            paddr: pa!(0x1_0000_3000),
+            size: 0x200000,
+            flags: MemRegionFlags::FREE | MemRegionFlags::READ | MemRegionFlags::WRITE,
+            name: "free memory",
+        })
+        .chain(crate::mem::default_mmio_regions())
+        // core::iter::empty()
     }
 }
 

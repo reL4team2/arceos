@@ -5,7 +5,7 @@ use core::fmt;
 use axconfig::plat::{PHYS_MEMORY_BASE, PHYS_MEMORY_SIZE, PHYS_VIRT_OFFSET};
 
 #[doc(no_inline)]
-pub use memory_addr::{MemoryAddr, PAGE_SIZE_4K, PhysAddr, VirtAddr};
+pub use memory_addr::{MemoryAddr, PhysAddr, VirtAddr, PAGE_SIZE_4K};
 
 bitflags::bitflags! {
     /// The flags of a physical memory region.
@@ -53,8 +53,9 @@ pub struct MemRegion {
 /// space at the address plus the offset. So we have
 /// `paddr = vaddr - PHYS_VIRT_OFFSET`.
 #[inline]
-pub const fn virt_to_phys(vaddr: VirtAddr) -> PhysAddr {
-    pa!(vaddr.as_usize() - PHYS_VIRT_OFFSET)
+pub fn virt_to_phys(vaddr: VirtAddr) -> PhysAddr {
+    pa!(common::root::translate_addr(vaddr.as_usize()))
+    // pa!(vaddr.as_usize() - PHYS_VIRT_OFFSET)
 }
 
 /// Converts a physical address to a virtual address.

@@ -11,7 +11,7 @@ documentation = "https://arceos-org.github.io/arceos/axhal/index.html"
 
 [features]
 smp = []
-alloc = []
+alloc = ["common/alloc"]
 fp_simd = []
 paging = ["axalloc"]
 irq = []
@@ -60,6 +60,7 @@ arm_pl031 = { version = "0.2", optional = true }
 dw_apb_uart = "0.1"
 # sel4
 sel4 = { workspace = true }
+common = { path = "../../../crates/common", default-features = false }
 
 [target.'cfg(target_arch = "loongarch64")'.dependencies]
 loongArch64 = "0.2.5"

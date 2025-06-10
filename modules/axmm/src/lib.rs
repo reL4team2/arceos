@@ -16,7 +16,7 @@ use axerrno::{AxError, AxResult};
 use axhal::mem::phys_to_virt;
 use kspin::SpinNoIrq;
 use lazyinit::LazyInit;
-use memory_addr::{PhysAddr, VirtAddr, va};
+use memory_addr::{va, PhysAddr, VirtAddr};
 use memory_set::MappingError;
 
 static KERNEL_ASPACE: LazyInit<SpinNoIrq<AddrSpace>> = LazyInit::new();
@@ -71,10 +71,10 @@ pub fn kernel_page_table_root() -> PhysAddr {
 pub fn init_memory_management() {
     info!("Initialize virtual memory management...");
 
-    let kernel_aspace = new_kernel_aspace().expect("failed to initialize kernel address space");
-    debug!("kernel address space init OK: {:#x?}", kernel_aspace);
-    KERNEL_ASPACE.init_once(SpinNoIrq::new(kernel_aspace));
-    axhal::paging::set_kernel_page_table_root(kernel_page_table_root());
+    // let kernel_aspace = new_kernel_aspace().expect("failed to initialize kernel address space");
+    // debug!("kernel address space init OK: {:#x?}", kernel_aspace);
+    // KERNEL_ASPACE.init_once(SpinNoIrq::new(kernel_aspace));
+    // axhal::paging::set_kernel_page_table_root(kernel_page_table_root());
 }
 
 /// Initializes kernel paging for secondary CPUs.

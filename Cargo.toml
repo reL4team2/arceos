@@ -3,6 +3,8 @@ resolver = "2"
 
 members = [
     "crates/kernel_guard",
+    "crates/percpu/percpu",
+    "crates/percpu/percpu_macros",
 
     "modules/axalloc",
     "modules/axconfig",
@@ -68,9 +70,12 @@ axtask = { path = "modules/axtask" }
 axdma = { path = "modules/axdma" }
 
 sel4 = { git = "https://github.com/seL4/rust-sel4", rev = "5b9ebfd" }
+common = { path = "../crates/common" }
 
 [patch.crates-io]
 kernel_guard = { path = "crates/kernel_guard" }
+percpu = { path = "crates/percpu/percpu" }
+percpu_macros = { path = "crates/percpu/percpu_macros" }
 
 [patch."https://github.com/seL4/rust-sel4"]
 sel4 = { git = "https://github.com/yfblock/rust-sel4", rev = "1280281" }
