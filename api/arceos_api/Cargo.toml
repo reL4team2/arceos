@@ -27,6 +27,9 @@ myfs = ["axfeat/myfs"]
 # Use dummy functions if the feature is not enabled
 dummy-if-not-enabled = []
 
+# running on sel4
+onsel4 = ["multitask", "alloc"]
+
 [dependencies]
 axio = "0.1"
 axerrno = "0.1"

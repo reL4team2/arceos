@@ -86,6 +86,16 @@ pub fn init_scheduler_secondary() {
     crate::timers::init();
 }
 
+#[cfg(feature = "onsel4")]
+pub fn switch_sel4_task(next_ptr: usize) {
+    let task = unsafe { Arc::from_raw(next_ptr as *const AxTask) };
+    unsafe {
+        current().suspend();
+        task.start();
+        CurrentTask::set_current(current(), task);
+    }
+}
+
 /// Handles periodic timer ticks for the task manager.
 ///
 /// For example, advance scheduler states, checks timed events, etc.
@@ -113,7 +123,11 @@ pub fn spawn_raw<F>(f: F, name: String, stack_size: usize) -> AxTaskRef
 where
     F: FnOnce() + Send + 'static,
 {
-    spawn_task(TaskInner::new(f, name, stack_size))
+    #[cfg(not(feature = "onsel4"))]
+    return spawn_task(TaskInner::new(f, name, stack_size));
+
+    #[cfg(feature = "onsel4")]
+    return spawn_task(TaskInner::new_with_ipc(f, name, stack_size));
 }
 
 /// Spawns a new task with the default parameters.
@@ -217,4 +231,10 @@ pub fn run_idle() -> ! {
         #[cfg(feature = "irq")]
         axhal::asm::wait_for_irqs();
     }
+}
+
+#[cfg(feature = "onsel4")]
+unsafe extern "C" {
+    /// Application's entry point.
+    pub fn main();
 }

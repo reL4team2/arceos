@@ -29,8 +29,16 @@ members = [
     "examples/helloworld-myplat",
     "examples/httpclient",
     "examples/httpserver",
-    "examples/httpserver",
+    "examples/bwbench",
     "examples/shell",
+    "examples/echoserver",
+    "examples/wait_queue",
+    "examples/irq",
+    "examples/sleep",
+    "examples/tls",
+    "examples/wait_queue",
+
+    "platforms/axplat-aarch64-sel4",
 ]
 
 [workspace.package]
@@ -67,6 +75,23 @@ axsync = { path = "modules/axsync" }
 axtask = { path = "modules/axtask" }
 axdma = { path = "modules/axdma" }
 axipi = { path = "modules/axipi" }
+axplat-aarch64-sel4 = { path = "platforms/axplat-aarch64-sel4" }
+
+sel4-kit = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "2c55dac" }
+srv-gate = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "2c55dac" }
+uart-thread = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "2c55dac" }
+common = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "2c55dac" }
+common-macros = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "2c55dac" }
+sel4 = { git = "https://github.com/seL4/rust-sel4", rev = "5b9ebfd" }
+
+[patch.crates-io]
+kernel_guard = { git = "https://github.com/croakexciting/kernel_guard.git", rev = "f0c503d" }
+axcpu = { git = "https://github.com/croakexciting/axcpu.git", rev = "d40cb74" }
+percpu = { git = "https://github.com/croakexciting/percpu.git", rev = "8d83e54" }
+percpu_macros = { git = "https://github.com/croakexciting/percpu.git", rev = "8d83e54" }
+
+[patch."https://github.com/seL4/rust-sel4"]
+sel4 = { git = "https://github.com/yfblock/rust-sel4", rev = "1280281" }
 
 [profile.release]
 lto = true

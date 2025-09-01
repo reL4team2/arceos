@@ -5,6 +5,8 @@
 #[cfg(feature = "axstd")]
 extern crate axstd as std;
 
+extern crate axplat_aarch64_sel4;
+
 use std::io::{self, prelude::*};
 use std::net::{TcpStream, ToSocketAddrs};
 

@@ -16,6 +16,9 @@ use crate::task::{CurrentTask, TaskState};
 use crate::wait_queue::WaitQueueGuard;
 use crate::{AxCpuMask, AxTaskRef, Scheduler, TaskInner, WaitQueue};
 
+#[cfg(feature = "onsel4")]
+use axplat_aarch64_sel4::switch_task;
+
 macro_rules! percpu_static {
     ($(
         $(#[$comment:meta])*
@@ -525,7 +528,7 @@ impl AxRunQueue {
 
     fn switch_to(&mut self, prev_task: CurrentTask, next_task: AxTaskRef) {
         // Make sure that IRQs are disabled by kernel guard or other means.
-        #[cfg(all(not(test), feature = "irq"))] // Note: irq is faked under unit tests.
+        #[cfg(all(not(test), feature = "irq", not(feature = "onsel4")))] // Note: irq is faked under unit tests.
         assert!(
             !axhal::asm::irqs_enabled(),
             "IRQs must be disabled during scheduling"
@@ -562,9 +565,15 @@ impl AxRunQueue {
             assert!(Arc::strong_count(prev_task.as_task_ref()) > 1);
             assert!(Arc::strong_count(&next_task) >= 1);
 
-            CurrentTask::set_current(prev_task, next_task);
-
-            (*prev_ctx_ptr).switch_to(&*next_ctx_ptr);
+            cfg_if::cfg_if! {
+                if #[cfg(feature = "onsel4")] {
+                    let ptr: usize = Arc::into_raw(next_task) as _;
+                    switch_task(ptr);
+                } else {
+                    CurrentTask::set_current(prev_task, next_task);
+                    (*prev_ctx_ptr).switch_to(&*next_ctx_ptr);
+                }
+            }
 
             // Current it's **next_task** running on this CPU, clear the `prev_task`'s `on_cpu` field
             // to indicate that it has finished its scheduling process and no longer running on this CPU.
@@ -636,9 +645,22 @@ pub(crate) fn init() {
     });
 
     // Put the subsequent execution into the `main` task.
-    let main_task = TaskInner::new_init("main".into()).into_arc();
-    main_task.set_state(TaskState::Running);
-    unsafe { CurrentTask::init_current(main_task) }
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "onsel4")] {
+            let main_task = TaskInner::new(
+                || unsafe { crate::main() },
+                "main".into(),
+                IDLE_TASK_STACK_SIZE,
+            )
+            .into_arc();
+            main_task.set_state(TaskState::Running);
+            main_task.start();
+        } else {
+            let main_task = TaskInner::new_init("main".into()).into_arc();
+            main_task.set_state(TaskState::Running);
+        }
+    }
+    unsafe { CurrentTask::init_set_current(main_task) }
 
     RUN_QUEUE.with_current(|rq| {
         rq.init_once(AxRunQueue::new(cpu_id));
@@ -652,12 +674,23 @@ pub(crate) fn init_secondary() {
     let cpu_id = this_cpu_id();
 
     // Put the subsequent execution into the `idle` task.
-    let idle_task = TaskInner::new_init("idle".into()).into_arc();
-    idle_task.set_state(TaskState::Running);
-    IDLE_TASK.with_current(|i| {
-        i.init_once(idle_task.clone());
-    });
-    unsafe { CurrentTask::init_current(idle_task) }
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "onsel4")] {
+            let idle_task = TaskInner::new(|| crate::run_idle(), "idle".into(), 4096).into_arc();
+            idle_task.set_state(TaskState::Running);
+            IDLE_TASK.with_current(|i| {
+                i.init_once(idle_task.clone());
+            });
+            unsafe { CurrentTask::init_set_current(idle_task) }
+        } else {
+            let idle_task = TaskInner::new_init("idle".into()).into_arc();
+            idle_task.set_state(TaskState::Running);
+            IDLE_TASK.with_current(|i| {
+                i.init_once(idle_task.clone());
+            });
+            unsafe { CurrentTask::init_current(idle_task) }
+        }
+    }
 
     RUN_QUEUE.with_current(|rq| {
         rq.init_once(AxRunQueue::new(cpu_id));

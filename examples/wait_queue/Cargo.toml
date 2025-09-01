@@ -1,0 +1,10 @@
+[package]
+name = "wait_queue"
+version = "0.1.0"
+edition = "2021"
+authors = ["Keyang Hu <keyang.hu@qq.com>"]
+description = "A simple demo to test the wait queue for tasks under ArceOS"
+
+[dependencies]
+axstd = { workspace = true, features = ["multitask", "irq", "onsel4"], optional = true }
+axplat-aarch64-sel4 = { workspace = true, features = ["irq"] }

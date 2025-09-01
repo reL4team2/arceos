@@ -25,6 +25,8 @@ net = ["axdriver", "axnet"]
 display = ["axdriver", "axdisplay"]
 rtc = []
 
+onsel4 = ["axtask/onsel4", "axhal/onsel4", "axplat-aarch64-sel4", "common", "sel4"]
+
 [dependencies]
 axhal = { workspace = true }
 axlog = { workspace = true }
@@ -44,3 +46,7 @@ percpu = { version = "0.2", optional = true }
 ctor_bare = "0.2"
 
 chrono = { version = "0.4.38", default-features = false }
+
+axplat-aarch64-sel4 = { workspace = true, optional = true }
+common = { workspace = true, features = ["alloc"], optional = true }
+sel4 = { workspace = true, optional = true }
