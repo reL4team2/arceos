@@ -1,0 +1,12 @@
+smp = 1
+build_mode = release
+log_level = warn
+
+Hello, main task
+Hello, main task test_yielding()!
+IRQ state tests on task yield run OK!
+Hello, main task test_sleep()!
+IRQ state tests on task sleep run OK!
+Hello, main task test_wait_queue()!
+IRQ state tests on task wait run OK!
+Task irq state tests run OK!

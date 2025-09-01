@@ -29,6 +29,7 @@
 
 #![no_std]
 #![feature(doc_auto_cfg)]
+#![feature(used_with_arg)]
 
 #[allow(unused_imports)]
 #[macro_use]
@@ -102,8 +103,13 @@ pub mod context {
     pub use axcpu::{TaskContext, TrapFrame};
 }
 
-pub use axcpu::asm;
 pub use axplat::init::init_later;
+
+#[cfg(not(feature = "onsel4"))]
+pub use axcpu::asm;
+
+#[cfg(feature = "onsel4")]
+pub use axplat_aarch64_sel4::asm;
 
 #[cfg(feature = "smp")]
 pub use axplat::init::{init_early_secondary, init_later_secondary};

@@ -16,6 +16,9 @@ use axhal::tls::TlsArea;
 use crate::task_ext::AxTaskExt;
 use crate::{AxCpuMask, AxTask, AxTaskRef, WaitQueue};
 
+#[cfg(feature = "onsel4")]
+use axplat_aarch64_sel4::{create_task, exit_system, exit_task, task::Sel4Task};
+
 /// A unique identifier for a thread.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct TaskId(u64);
@@ -77,6 +80,9 @@ pub struct TaskInner {
 
     #[cfg(feature = "tls")]
     tls: TlsArea,
+
+    #[cfg(feature = "onsel4")]
+    sel4task: Option<Arc<Sel4Task>>,
 }
 
 impl TaskId {
@@ -124,6 +130,46 @@ impl TaskInner {
 
         t.entry = Some(Box::into_raw(Box::new(entry)));
         t.ctx_mut().init(task_entry as usize, kstack.top(), tls);
+
+        #[cfg(feature = "onsel4")]
+        {
+            let sel4_task = Sel4Task::new(
+                t.id().0 as _,
+                task_entry as usize,
+                kstack.top().into(),
+                100,
+                tls.into(),
+            )
+            .unwrap();
+            t.sel4task = Some(Arc::new(sel4_task));
+            t.kstack = Some(kstack);
+        }
+        if t.name == "idle" {
+            t.is_idle = true;
+        }
+        t
+    }
+
+    #[cfg(feature = "onsel4")]
+    pub fn new_with_ipc<F>(entry: F, name: String, stack_size: usize) -> Self
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        let mut t = Self::new_common(TaskId::new(), name);
+        debug!("new task: {}", t.id_name());
+        let kstack = TaskStack::alloc(align_up_4k(stack_size));
+
+        t.entry = Some(Box::into_raw(Box::new(entry)));
+        let tls = VirtAddr::from(t.tls.tls_ptr() as usize);
+        let sel4_task_ptr = create_task(
+            t.id().0 as _,
+            task_entry as _,
+            kstack.top().into(),
+            tls.into(),
+        );
+        let arc = unsafe { Arc::from_raw(sel4_task_ptr as *const Sel4Task) };
+        t.sel4task = Some(arc);
+
         t.kstack = Some(kstack);
         if t.name == "idle" {
             t.is_idle = true;
@@ -219,6 +265,24 @@ impl TaskInner {
     pub fn set_cpumask(&self, cpumask: AxCpuMask) {
         *self.cpumask.lock() = cpumask
     }
+
+    #[cfg(feature = "onsel4")]
+    #[inline]
+    pub(crate) fn start(&self) {
+        match &self.sel4task {
+            Some(t) => t.start().unwrap(),
+            None => error!("sel4task not found"),
+        }
+    }
+
+    #[cfg(feature = "onsel4")]
+    #[inline]
+    pub(crate) fn suspend(&self) {
+        match &self.sel4task {
+            Some(t) => t.suspend().unwrap(),
+            None => error!("sel4task not found"),
+        }
+    }
 }
 
 // private methods
@@ -250,6 +314,9 @@ impl TaskInner {
             task_ext: AxTaskExt::empty(),
             #[cfg(feature = "tls")]
             tls: TlsArea::alloc(),
+            // seL4 thread
+            #[cfg(feature = "onsel4")]
+            sel4task: None,
         }
     }
 
@@ -261,6 +328,7 @@ impl TaskInner {
     ///
     /// And there is no need to set the `entry`, `kstack` or `tls` fields, as
     /// they will be filled automatically when the task is switches out.
+    #[cfg(not(feature = "onsel4"))]
     pub(crate) fn new_init(name: String) -> Self {
         let mut t = Self::new_common(TaskId::new(), name);
         t.is_init = true;
@@ -449,6 +517,15 @@ impl fmt::Debug for TaskInner {
 impl Drop for TaskInner {
     fn drop(&mut self) {
         debug!("task drop: {}", self.id_name());
+        #[cfg(feature = "onsel4")]
+        if let Some(arc) = self.sel4task.take() {
+            let raw = Arc::into_raw(arc) as usize;
+            exit_task(raw);
+
+            if self.name() == "main" {
+                exit_system();
+            }
+        }
     }
 }
 
@@ -459,7 +536,11 @@ struct TaskStack {
 
 impl TaskStack {
     pub fn alloc(size: usize) -> Self {
+        #[cfg(not(feature = "onsel4"))]
         let layout = Layout::from_size_align(size, 16).unwrap();
+
+        #[cfg(feature = "onsel4")]
+        let layout = Layout::from_size_align(size, 4096).unwrap();
         Self {
             ptr: NonNull::new(unsafe { alloc::alloc::alloc(layout) }).unwrap(),
             layout,
@@ -511,10 +592,19 @@ impl CurrentTask {
         Arc::ptr_eq(&self.0, other)
     }
 
+    #[cfg(not(feature = "onsel4"))]
     pub(crate) unsafe fn init_current(init_task: AxTaskRef) {
         assert!(init_task.is_init());
         #[cfg(feature = "tls")]
         axhal::asm::write_thread_pointer(init_task.tls.tls_ptr() as usize);
+        let ptr = Arc::into_raw(init_task);
+        unsafe {
+            axhal::percpu::set_current_task_ptr(ptr);
+        }
+    }
+
+    #[cfg(feature = "onsel4")]
+    pub(crate) unsafe fn init_set_current(init_task: AxTaskRef) {
         let ptr = Arc::into_raw(init_task);
         unsafe {
             axhal::percpu::set_current_task_ptr(ptr);
@@ -538,6 +628,28 @@ impl Deref for CurrentTask {
     }
 }
 
+#[cfg(feature = "onsel4")]
+use common_macros::sel4_thread_entry;
+
+#[cfg(feature = "onsel4")]
+#[sel4_thread_entry]
+extern "C" fn task_entry() -> ! {
+    #[cfg(feature = "smp")]
+    unsafe {
+        // Clear the prev task on CPU before running the task entry function.
+        crate::run_queue::clear_prev_task_on_cpu();
+    }
+    // Enable irq (if feature "irq" is enabled) before running the task entry function.
+    #[cfg(feature = "irq")]
+    axhal::asm::enable_irqs();
+    let task = crate::current();
+    if let Some(entry) = task.entry {
+        unsafe { Box::from_raw(entry)() };
+    }
+    crate::exit(0);
+}
+
+#[cfg(not(feature = "onsel4"))]
 extern "C" fn task_entry() -> ! {
     #[cfg(feature = "smp")]
     unsafe {

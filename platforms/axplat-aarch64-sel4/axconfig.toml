@@ -1,0 +1,70 @@
+# Architecture identifier.
+arch = "aarch64" # str
+# Platform identifier.
+platform = "aarch64-sel4" # str
+# Platform package.
+package = "axplat-aarch64-sel4"                           # str
+
+#
+# Platform configs
+#
+[plat]
+# Number of CPUs.
+cpu-num = 1                     # uint
+# Base address of the whole physical memory.
+phys-memory-base = 0            # uint
+# Size of the whole physical memory. (128M)
+phys-memory-size = 0x1000_0000          # uint
+# Base physical address of the kernel image.
+kernel-base-paddr = 0x10_0000   # uint
+# Base virtual address of the kernel image.
+kernel-base-vaddr = 0x10_0000   # uint
+# Linear mapping offset, for quick conversions between physical and virtual
+# addresses.
+phys-virt-offset = "0x0000_0000_0000_0000" # uint
+# Offset of bus address and phys address. some boards, the bus address is
+# different from the physical address.
+phys-bus-offset = 0                             # uint
+# Kernel address space base.
+kernel-aspace-base = "0x0000_0000_0000_0000" # uint
+# Kernel address space size.
+kernel-aspace-size = "0x0000_0000_0000_0000" # uint
+# Stack size on bootstrapping.
+# boot-stack-size = 0x40000                             # uint
+# seL4 virtual memory area
+virt-memory-base = 0x2000_0000
+virt-memory-size = 0x400_0000
+# sel4 virtual frame area
+virt-frame-base = 0x3000_0000
+virt-frame-size = 0x20_0000
+# sel4 initial heap area
+init-heap-base = 0x800_0000
+init-heap-size = 0x20_0000
+
+#
+# Device specifications
+#
+[devices]
+# MMIO regions with format (`base_paddr`, `size`).
+mmio-ranges = []           # [(uint, uint)]
+# VirtIO MMIO regions with format (`base_paddr`, `size`).
+virtio-mmio-ranges = [
+    [0x1_2000_3000, 0x200],
+    [0x1_2000_3200, 0x200],
+    [0x1_2000_3400, 0x200],
+    [0x1_2000_3600, 0x200],
+    [0x1_2000_3800, 0x200],
+    [0x1_2000_3a00, 0x200],
+    [0x1_2000_3c00, 0x200],
+    [0x1_2000_3e00, 0x200],
+] # [(uint, uint)]
+# Base physical address of the PCIe ECAM space.
+pci-ecam-base = 0           # uint
+# End PCI bus number.
+pci-bus-end = 0             # uint
+# PCI device memory ranges.
+pci-ranges = []             # [(uint, uint)]
+# Timer interrupt num (PPI, physical timer).
+timer-irq = 30                  # uint
+# UART Address
+uart-paddr = 0x1_2020_0000        # uint
