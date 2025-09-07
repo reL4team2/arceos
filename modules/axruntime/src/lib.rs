@@ -109,6 +109,12 @@ fn is_init_ok() -> bool {
 #[cfg_attr(not(test), axplat::main)]
 pub fn rust_main(cpu_id: usize, arg: usize) -> ! {
     unsafe { axhal::mem::clear_bss() };
+
+    axalloc::global_init(
+        axconfig::plat::INIT_HEAP_BASE,
+        axconfig::plat::INIT_HEAP_SIZE,
+    );
+
     axhal::init_percpu(cpu_id);
     axhal::init_early(cpu_id, arg);
 

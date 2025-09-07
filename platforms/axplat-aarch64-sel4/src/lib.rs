@@ -4,7 +4,6 @@
 extern crate axplat;
 
 extern crate alloc;
-extern crate axalloc;
 extern crate uart_thread;
 
 mod console;
