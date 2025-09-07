@@ -209,10 +209,10 @@ impl VirtFrameAllocator {
 pub(crate) fn init() {
     // TODO: use config to get the memory size
     // pre allocator initialize
-    axalloc::global_init(
-        axconfig::plat::INIT_HEAP_BASE,
-        axconfig::plat::INIT_HEAP_SIZE,
-    );
+    // axalloc::global_init(
+    //     axconfig::plat::INIT_HEAP_BASE,
+    //     axconfig::plat::INIT_HEAP_SIZE,
+    // );
     MEM_SPACE.init_once(MemSpace::new());
     MEM_SPACE.init();
     MEM_SPACE.map_area(MEM_START_ADDR, MEM_SIZE);

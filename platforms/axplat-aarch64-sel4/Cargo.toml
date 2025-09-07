@@ -31,5 +31,4 @@ uart-thread = { workspace = true }
 common = { workspace = true, features = ["alloc"] }
 common-macros = { workspace = true }
 sel4 = { workspace = true }
-axalloc = { workspace = true }
 axconfig = { workspace = true }
