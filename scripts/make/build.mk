@@ -71,4 +71,8 @@ $(OUT_UIMG): $(OUT_BIN)
 		-a $(subst _,,$(shell axconfig-gen "$(OUT_CONFIG)" -r plat.kernel-base-paddr)) \
 		-d $(OUT_BIN) $@)
 
+$(OUT_DIR)/image.elf: _cargo_build $(OUT_ELF)
+	$(MAKE) -C /workspace/arceos-apps/.rlk buld_img
+	cp /workspace/arceos-apps/.rlk/target/image.elf $@
+
 .PHONY: _cargo_build
