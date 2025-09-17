@@ -72,6 +72,9 @@ VHOST ?= n
 IP ?= 10.0.2.15
 GW ?= 10.0.2.2
 
+# rel4-linux-kit path
+RLK ?= /workspace/rel4-linux-kit
+
 # App type
 ifeq ($(wildcard $(APP)),)
   $(error Application path "$(APP)" is not valid)

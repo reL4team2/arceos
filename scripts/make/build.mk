@@ -72,7 +72,7 @@ $(OUT_UIMG): $(OUT_BIN)
 		-d $(OUT_BIN) $@)
 
 $(OUT_DIR)/image.elf: _cargo_build $(OUT_ELF)
-	$(MAKE) -C /workspace/arceos-apps/.rlk buld_img
-	cp /workspace/arceos-apps/.rlk/target/image.elf $@
+	$(MAKE) -C $(RLK) buld_img
+	cp $(RLK)/target/image.elf $@
 
 .PHONY: _cargo_build
