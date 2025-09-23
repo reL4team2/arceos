@@ -45,29 +45,30 @@ pub fn rust_main_secondary(cpu_id: usize) -> ! {
 
     axhal::init_later_secondary(cpu_id);
 
-    #[cfg(feature = "multitask")]
-    axtask::init_scheduler_secondary();
+    // #[cfg(feature = "multitask")]
+    // axtask::init_scheduler_secondary();
 
-    #[cfg(feature = "ipi")]
-    axipi::init();
+    // #[cfg(feature = "ipi")]
+    // axipi::init();
 
     info!("Secondary CPU {:x} init OK.", cpu_id);
     super::INITED_CPUS.fetch_add(1, Ordering::Release);
 
-    while !super::is_init_ok() {
-        core::hint::spin_loop();
-    }
+    // while !super::is_init_ok() {
+    //     core::hint::spin_loop();
+    // }
 
-    #[cfg(feature = "irq")]
-    axhal::asm::enable_irqs();
+    // #[cfg(feature = "irq")]
+    // axhal::asm::enable_irqs();
 
-    #[cfg(all(feature = "tls", not(feature = "multitask")))]
-    super::init_tls();
+    // #[cfg(all(feature = "tls", not(feature = "multitask")))]
+    // super::init_tls();
 
-    #[cfg(feature = "multitask")]
-    axtask::run_idle();
-    #[cfg(not(feature = "multitask"))]
-    loop {
-        axhal::asm::wait_for_irqs();
-    }
+    // #[cfg(feature = "multitask")]
+    // axtask::run_idle();
+    // #[cfg(not(feature = "multitask"))]
+    // loop {
+    //     axhal::asm::wait_for_irqs();
+    // }
+    crate::sel4_handler::secondary_event_handler()
 }

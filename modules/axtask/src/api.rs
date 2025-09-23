@@ -174,10 +174,12 @@ pub fn set_current_affinity(cpumask: AxCpuMask) -> bool {
         if !cpumask.get(axhal::percpu::this_cpu_id()) {
             const MIGRATION_TASK_STACK_SIZE: usize = 4096;
             // Spawn a new migration task for migrating.
+            // use create task ipc instead
             let migration_task = TaskInner::new(
                 move || crate::run_queue::migrate_entry(curr),
                 "migration-task".into(),
                 MIGRATION_TASK_STACK_SIZE,
+                0,
             )
             .into_arc();
 
