@@ -38,6 +38,7 @@ pub struct Sel4Task {
     pub ipc_buffer: cap::Granule,
     pub ipc_buffer_addr: usize,
     pub tid: usize,
+    pub affinity: usize,
 }
 
 impl Sel4Task {
@@ -54,6 +55,7 @@ impl Sel4Task {
             ipc_buffer: Granule::from_bits(0),
             ipc_buffer_addr: 0,
             tid: 0,
+            affinity: 0,
         }
     }
 
@@ -66,6 +68,7 @@ impl Sel4Task {
         stack: usize,
         priority: usize,
         _tls: usize,
+        affinity: usize,
     ) -> sel4::Result<Self> {
         log::debug!(
             "create new task: tid: {:#x}, entry: {:#x}, stack: {:#x}",
@@ -119,7 +122,14 @@ impl Sel4Task {
         )
         .unwrap();
 
-        tcb.tcb_set_tls_base(_tls as _).unwrap();
+        let mut sp = stack;
+        if _tls > 0 {
+            tcb.tcb_set_tls_base(_tls as _).unwrap();
+        } else {
+            // reserve tls region on stack
+            sp = stack - 0x100;
+            tcb.tcb_set_tls_base(stack as _).unwrap();
+        }
 
         tcb.tcb_set_sched_params(sel4::init_thread::slot::TCB.cap(), 0, priority as _)
             .unwrap();
@@ -127,8 +137,9 @@ impl Sel4Task {
         // set init context
         let mut regs = tcb.tcb_read_all_registers(true).unwrap();
         *regs.pc_mut() = entry as _;
-        *regs.sp_mut() = stack as _;
+        *regs.sp_mut() = sp as _;
         *regs.gpr_mut(8) = virt as _;
+        *regs.gpr_mut(0) = affinity as _;
         unsafe {
             core::arch::asm!(
                 "str x28, [{0}]",
@@ -139,17 +150,21 @@ impl Sel4Task {
 
         tcb.tcb_write_all_registers(false, &mut regs).unwrap();
 
+        // set affinity
+        tcb.tcb_set_affinity(affinity as _).unwrap();
+
         let task = Self {
             tcb,
             cnode,
             ep: srv_ep,
             entry,
-            stack,
+            stack: sp,
             capset: obj_allocator,
             untyped,
             ipc_buffer: ipc_cap,
             ipc_buffer_addr: virt,
             tid,
+            affinity,
         };
 
         Ok(task)
@@ -157,6 +172,10 @@ impl Sel4Task {
 
     pub fn start(&self) -> sel4::Result<()> {
         self.tcb.tcb_resume()
+    }
+
+    pub fn set_affinity(&self, affinity: usize) -> sel4::Result<()> {
+        self.tcb.tcb_set_affinity(affinity as _)
     }
 
     pub fn suspend(&self) -> sel4::Result<()> {
@@ -182,8 +201,8 @@ impl Sel4Task {
     }
 }
 
-pub fn create_sel4_task(tid: usize, entry: usize, stack: usize, tls: usize) -> usize {
-    let t = Arc::new(Sel4Task::new(tid, entry, stack, 100, tls).unwrap());
+pub fn create_sel4_task(tid: usize, entry: usize, stack: usize, tls: usize, affinity: usize) -> usize {
+    let t = Arc::new(Sel4Task::new(tid, entry, stack, 100, tls, affinity).unwrap());
     let ptr = Arc::into_raw(t);
     ptr as usize
 }

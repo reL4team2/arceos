@@ -1,6 +1,13 @@
 use axplat::power::PowerIf;
+use crate::task::Sel4Task;
+use common_macros::sel4_thread_entry;
 
 struct PowerImpl;
+
+#[sel4_thread_entry]
+extern "C" fn _start_secondary(cpu_id: usize) -> ! {
+    axplat::call_secondary_main(cpu_id)
+}
 
 #[impl_plat_interface]
 impl PowerIf for PowerImpl {
@@ -10,8 +17,11 @@ impl PowerIf for PowerImpl {
     /// Where `cpu_id` is the logical CPU ID (0, 1, ..., N-1, N is the number of
     /// CPU cores on the platform).
     #[cfg(feature = "smp")]
-    fn cpu_boot(cpu_id: usize, stack_top_paddr: usize) {
-        todo!()
+    fn cpu_boot(cpu_id: usize, stack: usize) {
+        // create a sel4 task and set affinity
+        let entry = _start_secondary as usize;
+        let task = Sel4Task::new(0xF000 + cpu_id, entry, stack, 254, 0, cpu_id).unwrap();
+        task.start().unwrap();
     }
 
     /// Shutdown the whole system.

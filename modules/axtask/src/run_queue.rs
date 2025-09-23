@@ -449,7 +449,7 @@ impl AxRunQueue {
     /// Create a new run queue for the specified CPU.
     /// The run queue is initialized with a per-CPU gc task in its scheduler.
     fn new(cpu_id: usize) -> Self {
-        let gc_task = TaskInner::new(gc_entry, "gc".into(), axconfig::TASK_STACK_SIZE).into_arc();
+        let gc_task = TaskInner::new(gc_entry, "gc".into(), axconfig::TASK_STACK_SIZE, cpu_id).into_arc();
         // gc task should be pinned to the current CPU.
         gc_task.set_cpumask(AxCpuMask::one_shot(cpu_id));
 
@@ -637,7 +637,7 @@ pub(crate) fn init() {
 
     // Create the `idle` task (not current task).
     const IDLE_TASK_STACK_SIZE: usize = 4096;
-    let idle_task = TaskInner::new(|| crate::run_idle(), "idle".into(), IDLE_TASK_STACK_SIZE);
+    let idle_task = TaskInner::new(|| crate::run_idle(), "idle".into(), IDLE_TASK_STACK_SIZE, cpu_id);
     // idle task should be pinned to the current CPU.
     idle_task.set_cpumask(AxCpuMask::one_shot(cpu_id));
     IDLE_TASK.with_current(|i| {
@@ -651,6 +651,7 @@ pub(crate) fn init() {
                 || unsafe { crate::main() },
                 "main".into(),
                 IDLE_TASK_STACK_SIZE,
+                cpu_id,
             )
             .into_arc();
             main_task.set_state(TaskState::Running);
@@ -676,7 +677,7 @@ pub(crate) fn init_secondary() {
     // Put the subsequent execution into the `idle` task.
     cfg_if::cfg_if! {
         if #[cfg(feature = "onsel4")] {
-            let idle_task = TaskInner::new(|| crate::run_idle(), "idle".into(), 4096).into_arc();
+            let idle_task = TaskInner::new(|| crate::run_idle(), "idle".into(), 4096, cpu_id).into_arc();
             idle_task.set_state(TaskState::Running);
             IDLE_TASK.with_current(|i| {
                 i.init_once(idle_task.clone());
