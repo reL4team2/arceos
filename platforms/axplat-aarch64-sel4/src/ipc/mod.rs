@@ -17,7 +17,7 @@ macro_rules! call_ep {
 }
 
 #[generate_ipc_send(label = ServiceEvent::CreateTask)]
-pub fn create_task(tid: usize, entry: usize, kstack: usize, tls: usize) -> usize {}
+pub fn create_task(tid: usize, entry: usize, kstack: usize, tls: usize, affinity: usize) -> usize {}
 
 #[generate_ipc_send(label = ServiceEvent::SwitchTask)]
 pub fn switch_task(task: usize) -> usize {}

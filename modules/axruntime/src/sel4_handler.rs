@@ -9,6 +9,7 @@ use sel4::with_ipc_buffer_mut;
 pub(crate) fn event_handler() -> ! {
     with_ipc_buffer_mut(|ib| {
         loop {
+            info!("Waiting for message...");
             let (msg, _badge) = DEFAULT_SERVE_EP.recv(());
             #[cfg(feature = "irq")]
             if msg.label() == 0 {
@@ -38,8 +39,9 @@ pub(crate) fn event_handler() -> ! {
                     axtask::switch_sel4_task(task_ptr);
                 }
                 ServiceEvent::CreateTask => {
-                    let (tid, entry, stack, tls) = read_types!(ib, usize, usize, usize, usize);
-                    let task_ptr = create_sel4_task(tid, entry, stack, tls);
+                    let (tid, entry, stack, tls, affinity) =
+                        read_types!(ib, usize, usize, usize, usize, usize);
+                    let task_ptr = create_sel4_task(tid, entry, stack, tls, affinity);
                     reply_with!(ib, task_ptr);
                 }
                 ServiceEvent::ExitTask => {
@@ -57,4 +59,15 @@ pub(crate) fn event_handler() -> ! {
 
     info!("Exit system");
     axhal::power::system_off();
+}
+
+#[cfg(feature = "smp")]
+pub(crate) fn secondary_event_handler() -> ! {
+    with_ipc_buffer_mut(|ib| {
+        loop {
+            let (msg, _badge) = DEFAULT_SERVE_EP.recv(());
+        }
+    });
+
+    panic!()
 }

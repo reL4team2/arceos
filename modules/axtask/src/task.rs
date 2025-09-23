@@ -115,7 +115,7 @@ unsafe impl Sync for TaskInner {}
 
 impl TaskInner {
     /// Create a new task with the given entry function and stack size.
-    pub fn new<F>(entry: F, name: String, stack_size: usize) -> Self
+    pub fn new<F>(entry: F, name: String, stack_size: usize, affinity: usize) -> Self
     where
         F: FnOnce() + Send + 'static,
     {
@@ -139,6 +139,7 @@ impl TaskInner {
                 kstack.top().into(),
                 100,
                 tls.into(),
+                affinity,
             )
             .unwrap();
             t.sel4task = Some(Arc::new(sel4_task));
@@ -166,6 +167,7 @@ impl TaskInner {
             task_entry as _,
             kstack.top().into(),
             tls.into(),
+            axhal::percpu::this_cpu_id(),
         );
         let arc = unsafe { Arc::from_raw(sel4_task_ptr as *const Sel4Task) };
         t.sel4task = Some(arc);
