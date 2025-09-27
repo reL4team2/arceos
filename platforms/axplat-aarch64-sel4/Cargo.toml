@@ -22,6 +22,7 @@ log = "0.4"
 axcpu = "0.2"
 lazyinit = "0.2"
 memory_addr = "0.4"
+percpu = "0.2"
 num_enum = { version = "0.7.3", default-features = false }
 zerocopy = { version = "0.8.20", default-features = false }
 

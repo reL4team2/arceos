@@ -1,9 +1,10 @@
-use axplat::power::PowerIf;
 use crate::task::Sel4Task;
+use axplat::power::PowerIf;
 use common_macros::sel4_thread_entry;
 
 struct PowerImpl;
 
+#[cfg(feature = "smp")]
 #[sel4_thread_entry]
 extern "C" fn _start_secondary(cpu_id: usize) -> ! {
     axplat::call_secondary_main(cpu_id)
@@ -20,7 +21,7 @@ impl PowerIf for PowerImpl {
     fn cpu_boot(cpu_id: usize, stack: usize) {
         // create a sel4 task and set affinity
         let entry = _start_secondary as usize;
-        let task = Sel4Task::new(0xF000 + cpu_id, entry, stack, 254, 0, cpu_id).unwrap();
+        let task = Sel4Task::new_init_task(entry, stack, cpu_id).unwrap();
         task.start().unwrap();
     }
 

@@ -45,8 +45,8 @@ pub fn rust_main_secondary(cpu_id: usize) -> ! {
 
     axhal::init_later_secondary(cpu_id);
 
-    // #[cfg(feature = "multitask")]
-    // axtask::init_scheduler_secondary();
+    #[cfg(feature = "multitask")]
+    axtask::init_scheduler_secondary();
 
     // #[cfg(feature = "ipi")]
     // axipi::init();
@@ -64,11 +64,15 @@ pub fn rust_main_secondary(cpu_id: usize) -> ! {
     // #[cfg(all(feature = "tls", not(feature = "multitask")))]
     // super::init_tls();
 
-    // #[cfg(feature = "multitask")]
-    // axtask::run_idle();
-    // #[cfg(not(feature = "multitask"))]
-    // loop {
-    //     axhal::asm::wait_for_irqs();
+    // #[cfg(not(feature = "onsel4"))] {
+    //     #[cfg(feature = "multitask")]
+    //     axtask::run_idle();
+    //     #[cfg(not(feature = "multitask"))]
+    //     loop {
+    //         axhal::asm::wait_for_irqs();
+    //     }
     // }
+
+    #[cfg(feature = "onsel4")]
     crate::sel4_handler::secondary_event_handler()
 }
