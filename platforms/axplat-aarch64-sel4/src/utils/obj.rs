@@ -4,32 +4,37 @@ use common::ObjectAllocator;
 use kspin::SpinNoIrq;
 use sel4::{
     Cap,
-    cap::{Granule, PT, Untyped},
+    cap::{PT, Untyped, Notification},
 };
 
+#[percpu::def_percpu]
 pub(crate) static OBJ_ALLOCATOR: ObjectAllocator = ObjectAllocator::empty();
 
 pub fn alloc_pt() -> PT {
-    OBJ_ALLOCATOR.alloc_pt()
+    unsafe { OBJ_ALLOCATOR.current_ref_raw().alloc_pt() }
 }
 
-pub fn alloc_pages(pn: usize) -> Vec<Granule> {
-    OBJ_ALLOCATOR.alloc_pages(pn)
+pub fn alloc_notification() -> Notification {
+    unsafe { OBJ_ALLOCATOR.current_ref_raw().alloc_notification() }
 }
 
 pub fn init() {
-    OBJ_ALLOCATOR.init(Cap::from_bits(23));
+    unsafe { OBJ_ALLOCATOR.current_ref_raw().init(Cap::from_bits(23)); }
 }
 
-const ALLOC_SIZE_BITS: usize = 21; // 2MB
+pub fn alloc_untyped_raw(size_bits: usize) -> Untyped {
+    unsafe { OBJ_ALLOCATOR.current_ref_raw().alloc_untyped(size_bits) }
+}
+
+const ALLOC_SIZE_BITS: usize = 19; // 512KB
 
 static RECYCLED_UNTYPED: SpinNoIrq<Vec<Untyped>> = SpinNoIrq::new(Vec::new());
 
 pub fn alloc_untyped_unit() -> (Untyped, usize) {
     let cap = match RECYCLED_UNTYPED.lock().pop() {
         Some(cap) => cap,
-        None => {
-            OBJ_ALLOCATOR.alloc_untyped(ALLOC_SIZE_BITS)
+        None => unsafe {
+            OBJ_ALLOCATOR.current_ref_raw().alloc_untyped(ALLOC_SIZE_BITS)
         },
     };
     (cap, 1 << ALLOC_SIZE_BITS)

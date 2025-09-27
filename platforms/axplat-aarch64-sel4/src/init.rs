@@ -47,7 +47,9 @@ impl InitIf for InitIfImpl {
     ///
     /// See [`init_early`] for details.
     #[cfg(feature = "smp")]
-    fn init_early_secondary(_cpu_id: usize) {}
+    fn init_early_secondary(_cpu_id: usize) {
+        crate::utils::obj::init();
+    }
 
     /// Initializes the platform at the later stage for the primary core.
     ///
@@ -74,7 +76,6 @@ impl InitIf for InitIfImpl {
     /// * Timer interrupts are enabled (if applicable).
     /// * Other essential peripherals are initialized.
     fn init_later(_cpu_id: usize, _arg: usize) {
-
         #[cfg(feature = "irq")]
         crate::irq::init_later();
     }

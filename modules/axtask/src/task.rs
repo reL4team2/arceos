@@ -115,7 +115,7 @@ unsafe impl Sync for TaskInner {}
 
 impl TaskInner {
     /// Create a new task with the given entry function and stack size.
-    pub fn new<F>(entry: F, name: String, stack_size: usize, affinity: usize) -> Self
+    pub fn new<F>(entry: F, name: String, stack_size: usize, affinity: usize, is_init: bool) -> Self
     where
         F: FnOnce() + Send + 'static,
     {
@@ -133,6 +133,7 @@ impl TaskInner {
 
         #[cfg(feature = "onsel4")]
         {
+            t.is_init = is_init;
             let sel4_task = Sel4Task::new(
                 t.id().0 as _,
                 task_entry as usize,
@@ -636,15 +637,17 @@ use common_macros::sel4_thread_entry;
 #[cfg(feature = "onsel4")]
 #[sel4_thread_entry]
 extern "C" fn task_entry() -> ! {
+    let task = crate::current();
     #[cfg(feature = "smp")]
     unsafe {
         // Clear the prev task on CPU before running the task entry function.
-        crate::run_queue::clear_prev_task_on_cpu();
+        if !task.is_init() {
+            crate::run_queue::clear_prev_task_on_cpu();
+        }
     }
     // Enable irq (if feature "irq" is enabled) before running the task entry function.
     #[cfg(feature = "irq")]
     axhal::asm::enable_irqs();
-    let task = crate::current();
     if let Some(entry) = task.entry {
         unsafe { Box::from_raw(entry)() };
     }
