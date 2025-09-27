@@ -11,7 +11,7 @@ use common::{root::register_irq, slot::alloc_slot};
 use sel4::cap::{IrqHandler as Sel4IrqHandler, Notification};
 use sel4_kit::slot_manager::LeafSlot;
 
-use crate::utils::obj::OBJ_ALLOCATOR;
+use crate::utils::obj::alloc_notification;
 
 const MAX_IRQ_COUNT: usize = 1024;
 
@@ -89,7 +89,7 @@ impl IrqCap {
     /// Initializes the IRQ capabilities and task.
     pub(crate) fn init(&mut self) -> sel4::Result<()> {
         // create a global notification for IRQs
-        self.global_notify = OBJ_ALLOCATOR.alloc_notification();
+        self.global_notify = alloc_notification();
         self.enable = true;
 
         sel4::init_thread::slot::TCB

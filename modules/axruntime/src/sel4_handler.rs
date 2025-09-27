@@ -4,7 +4,7 @@ use axplat_aarch64_sel4::irq::handle_irq;
 use axplat_aarch64_sel4::task::{create_sel4_task, exit_sel4_task};
 use common::config::DEFAULT_SERVE_EP;
 use common::{read_types, reply_with};
-use sel4::with_ipc_buffer_mut;
+use sel4::{with_ipc_buffer_mut, Fault, with_ipc_buffer};
 
 pub(crate) fn event_handler() -> ! {
     with_ipc_buffer_mut(|ib| {
@@ -27,8 +27,8 @@ pub(crate) fn event_handler() -> ! {
                             error!("Unknown root messaage label: {:#x}", msg.label());
                         }
                     }
-                    // let fault = with_ipc_buffer(|buffer| Fault::new(buffer, &msg));
-                    // self.handle_fault(fault);
+                    let fault = with_ipc_buffer(|buffer| Fault::new(buffer, &msg));
+                    error!("Received {} Fault: {:#x?}", _badge, fault);
                     continue;
                 }
             };
@@ -63,6 +63,7 @@ pub(crate) fn event_handler() -> ! {
 
 #[cfg(feature = "smp")]
 pub(crate) fn secondary_event_handler() -> ! {
+    // only handle interrupts in secondary event handler. for timer and ipi interrupt
     with_ipc_buffer_mut(|ib| {
         loop {
             let (msg, _badge) = DEFAULT_SERVE_EP.recv(());
