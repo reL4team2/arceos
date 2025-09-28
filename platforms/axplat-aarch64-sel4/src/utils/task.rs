@@ -71,8 +71,9 @@ impl Sel4Task {
         _tls: usize,
         affinity: usize,
     ) -> sel4::Result<Self> {
-        log::info!(
-            "create new task: tid: {:#x}, entry: {:#x}, stack: {:#x}",
+        log::debug!(
+            "create new task on cpu {}: tid: {:#x}, entry: {:#x}, stack: {:#x}",
+            affinity,
             tid,
             entry,
             stack
@@ -110,16 +111,14 @@ impl Sel4Task {
             .absolute_cptr_from_bits_with_depth(DEFAULT_SERVE_EP.bits(), CNODE_RADIX_BITS)
             .copy(&LeafSlot::from_cap(srv_ep).abs_cptr(), CapRights::all())?;
 
-        log::info!("lxy debug1");
         let (virt, ipc_cap) = alloc_ipc_buffer(&obj_allocator).unwrap();
-        log::info!("lxy debug2");
 
         // configure thread tcb
         tcb.tcb_configure(
             DEFAULT_PARENT_EP.cptr(),
             cnode,
             CNodeCapData::skip_high_bits(CNODE_RADIX_BITS),
-            sel4::init_thread::slot::VSPACE.cap(),
+            init_thread::slot::VSPACE.cap(),
             virt as _,
             ipc_cap,
         )
@@ -180,11 +179,8 @@ impl Sel4Task {
         let tid = 0xF000 + affinity;
 
         // create a 2-level cspace
-        log::info!("create 2-level cspace for init task");
         let cnode = obj_allocator.alloc_cnode(CNODE_RADIX_BITS);
-        log::info!("first level cnode: {:#x}", cnode.bits());
         let inner_cnode = obj_allocator.alloc_cnode(CNODE_RADIX_BITS);
-        log::info!("second level cnode: {:#x}", inner_cnode.bits());
         cnode
             .absolute_cptr_from_bits_with_depth(0, CNODE_RADIX_BITS)
             .mutate(
@@ -209,10 +205,9 @@ impl Sel4Task {
 
         // create a new tcb
         let tcb = obj_allocator.alloc_tcb();
-        log::info!("create tcb for init task: {:#x}", tcb.bits());
+
         // create a endpoint for task
         let ep = obj_allocator.alloc_endpoint();
-        log::info!("create ep for init task: {:#x}", ep.bits());
 
         cnode.absolute_cptr(init_thread::slot::CNODE.cptr()).mint(
             &LeafSlot::from_cap(cnode).abs_cptr(),
@@ -224,7 +219,7 @@ impl Sel4Task {
         cnode
             .absolute_cptr(init_thread::slot::TCB.cptr())
             .copy(&LeafSlot::from_cap(tcb).abs_cptr(), CapRights::all())?;
-        log::info!("init task tcb: {:#x}", tcb.bits());
+
         // copy parent endpoint to child
         cnode.absolute_cptr(DEFAULT_PARENT_EP.cptr()).mint(
             &LeafSlot::from(DEFAULT_SERVE_EP).abs_cptr(),
@@ -232,14 +227,13 @@ impl Sel4Task {
             tid as _,
         )?;
 
-        log::info!("init task parent ep: {:#x}", DEFAULT_PARENT_EP.bits());
         // copy srv endpoint to cnode
         cnode
             .absolute_cptr(DEFAULT_SERVE_EP.cptr())
             .copy(&LeafSlot::from_cap(ep).abs_cptr(), CapRights::all())?;
 
         let (virt, ipc_cap) = alloc_ipc_buffer(&obj_allocator).unwrap();
-        log::info!("init task ipc buffer: {:#x}", ipc_cap.bits());
+
         // copy untyped into cnode
         let untyped_raw = alloc_untyped_raw(22);
 
@@ -248,13 +242,15 @@ impl Sel4Task {
             CapRights::all(),
         )?;
 
-        log::info!("init task untyped: {:#x}", untyped_raw.bits());
-
+        // copy vspace to thread
+        cnode.absolute_cptr(init_thread::slot::VSPACE.cptr())
+            .copy(&LeafSlot::from(init_thread::slot::VSPACE.cap()).abs_cptr(), CapRights::all())?;        
+                    
         tcb.tcb_configure(
             DEFAULT_PARENT_EP.cptr(),
             cnode,
             CNodeCapData::skip_high_bits(2 * CNODE_RADIX_BITS),
-            sel4::init_thread::slot::VSPACE.cap(),
+            init_thread::slot::VSPACE.cap(),
             virt as _,
             ipc_cap,
         )?;
