@@ -115,11 +115,12 @@ unsafe impl Sync for TaskInner {}
 
 impl TaskInner {
     /// Create a new task with the given entry function and stack size.
+    #[cfg(feature = "onsel4")]
     pub fn new<F>(entry: F, name: String, stack_size: usize, affinity: usize, is_init: bool) -> Self
     where
         F: FnOnce() + Send + 'static,
     {
-        let mut t = Self::new_common(TaskId::new(), name);
+        let mut t = Self::new_common(TaskId::new(), name, affinity);
         debug!("new task: {}", t.id_name());
         let kstack = TaskStack::alloc(align_up_4k(stack_size));
 
@@ -131,21 +132,19 @@ impl TaskInner {
         t.entry = Some(Box::into_raw(Box::new(entry)));
         t.ctx_mut().init(task_entry as usize, kstack.top(), tls);
 
-        #[cfg(feature = "onsel4")]
-        {
-            t.is_init = is_init;
-            let sel4_task = Sel4Task::new(
-                t.id().0 as _,
-                task_entry as usize,
-                kstack.top().into(),
-                100,
-                tls.into(),
-                affinity,
-            )
-            .unwrap();
-            t.sel4task = Some(Arc::new(sel4_task));
-            t.kstack = Some(kstack);
-        }
+        t.is_init = is_init;
+        let sel4_task = Sel4Task::new(
+            t.id().0 as _,
+            task_entry as usize,
+            kstack.top().into(),
+            100,
+            tls.into(),
+            affinity,
+        )
+        .unwrap();
+        t.sel4task = Some(Arc::new(sel4_task));
+        t.kstack = Some(kstack);
+
         if t.name == "idle" {
             t.is_idle = true;
         }
@@ -157,7 +156,8 @@ impl TaskInner {
     where
         F: FnOnce() + Send + 'static,
     {
-        let mut t = Self::new_common(TaskId::new(), name);
+        let cpu = axhal::percpu::this_cpu_id();
+        let mut t = Self::new_common(TaskId::new(), name, cpu);
         debug!("new task: {}", t.id_name());
         let kstack = TaskStack::alloc(align_up_4k(stack_size));
 
@@ -168,7 +168,7 @@ impl TaskInner {
             task_entry as _,
             kstack.top().into(),
             tls.into(),
-            axhal::percpu::this_cpu_id(),
+            cpu,
         );
         let arc = unsafe { Arc::from_raw(sel4_task_ptr as *const Sel4Task) };
         t.sel4task = Some(arc);
@@ -290,7 +290,8 @@ impl TaskInner {
 
 // private methods
 impl TaskInner {
-    fn new_common(id: TaskId, name: String) -> Self {
+    #[cfg(not(feature = "onsel4"))]
+    fn new_common(id: TaskId, name: String, cpu: usize) -> Self {
         Self {
             id,
             name,
@@ -300,6 +301,40 @@ impl TaskInner {
             state: AtomicU8::new(TaskState::Ready as u8),
             // By default, the task is allowed to run on all CPUs.
             cpumask: SpinNoIrq::new(AxCpuMask::full()),
+            in_wait_queue: AtomicBool::new(false),
+            #[cfg(feature = "irq")]
+            timer_ticket_id: AtomicU64::new(0),
+            cpu_id: AtomicU32::new(0),
+            #[cfg(feature = "smp")]
+            on_cpu: AtomicBool::new(false),
+            #[cfg(feature = "preempt")]
+            need_resched: AtomicBool::new(false),
+            #[cfg(feature = "preempt")]
+            preempt_disable_count: AtomicUsize::new(0),
+            exit_code: AtomicI32::new(0),
+            wait_for_exit: WaitQueue::new(),
+            kstack: None,
+            ctx: UnsafeCell::new(TaskContext::new()),
+            task_ext: AxTaskExt::empty(),
+            #[cfg(feature = "tls")]
+            tls: TlsArea::alloc(),
+            // seL4 thread
+            #[cfg(feature = "onsel4")]
+            sel4task: None,
+        }
+    }
+
+    #[cfg(feature = "onsel4")]
+    fn new_common(id: TaskId, name: String, cpu: usize) -> Self {
+        Self {
+            id,
+            name,
+            is_idle: false,
+            is_init: false,
+            entry: None,
+            state: AtomicU8::new(TaskState::Ready as u8),
+            // By default, the task is allowed to run on all CPUs.
+            cpumask: SpinNoIrq::new(AxCpuMask::one_shot(cpu)),
             in_wait_queue: AtomicBool::new(false),
             #[cfg(feature = "irq")]
             timer_ticket_id: AtomicU64::new(0),
