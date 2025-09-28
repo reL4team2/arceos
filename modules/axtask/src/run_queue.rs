@@ -677,11 +677,12 @@ pub(crate) fn init_secondary() {
     // Put the subsequent execution into the `idle` task.
     cfg_if::cfg_if! {
         if #[cfg(feature = "onsel4")] {
-            let idle_task = TaskInner::new(|| crate::run_idle(), "idle".into(), 4096, cpu_id, false).into_arc();
+            let idle_task = TaskInner::new(|| crate::run_idle(), "idle".into(), 4096, cpu_id, true).into_arc();
             idle_task.set_state(TaskState::Running);
             IDLE_TASK.with_current(|i| {
                 i.init_once(idle_task.clone());
             });
+            idle_task.start();
             unsafe { CurrentTask::init_set_current(idle_task) }
         } else {
             let idle_task = TaskInner::new_init("idle".into()).into_arc();

@@ -6,10 +6,10 @@ use common::config::DEFAULT_SERVE_EP;
 use common::{read_types, reply_with};
 use sel4::{with_ipc_buffer_mut, Fault, with_ipc_buffer};
 
-pub(crate) fn event_handler() -> ! {
+pub(crate) fn event_handler(cpu_id: usize) -> ! {
     with_ipc_buffer_mut(|ib| {
         loop {
-            info!("Waiting for message...");
+            debug!("Waiting for message on cpu {}...", cpu_id);
             let (msg, _badge) = DEFAULT_SERVE_EP.recv(());
             #[cfg(feature = "irq")]
             if msg.label() == 0 {
@@ -36,6 +36,7 @@ pub(crate) fn event_handler() -> ! {
                 ServiceEvent::SwitchTask => {
                     let task_ptr = read_types!(ib, usize);
                     reply_with!(ib, 0);
+                    debug!("Switch to task {:#x}", task_ptr);
                     axtask::switch_sel4_task(task_ptr);
                 }
                 ServiceEvent::CreateTask => {
@@ -59,16 +60,4 @@ pub(crate) fn event_handler() -> ! {
 
     info!("Exit system");
     axhal::power::system_off();
-}
-
-#[cfg(feature = "smp")]
-pub(crate) fn secondary_event_handler() -> ! {
-    // only handle interrupts in secondary event handler. for timer and ipi interrupt
-    with_ipc_buffer_mut(|ib| {
-        loop {
-            let (msg, _badge) = DEFAULT_SERVE_EP.recv(());
-        }
-    });
-
-    panic!()
 }

@@ -210,7 +210,7 @@ pub fn rust_main(cpu_id: usize, arg: usize) -> ! {
     }
 
     #[cfg(feature = "onsel4")]
-    sel4_handler::event_handler();
+    sel4_handler::event_handler(cpu_id);
 
     #[cfg(not(feature = "onsel4"))]
     {

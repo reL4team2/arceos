@@ -8,4 +8,4 @@ authors = ["Yuekai Jia <equation618@gmail.com>"]
 
 [dependencies]
 axstd = { workspace = true, features = ["alloc", "onsel4", "multitask", "net"], optional = true }
-axplat-aarch64-sel4 = { workspace = true, features = [] }
+axplat-aarch64-sel4 = { workspace = true, features = ["smp"] }
