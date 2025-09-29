@@ -551,9 +551,6 @@ impl AxRunQueue {
         next_task.set_on_cpu(true);
 
         unsafe {
-            let prev_ctx_ptr = prev_task.ctx_mut_ptr();
-            let next_ctx_ptr = next_task.ctx_mut_ptr();
-
             // Store the weak pointer of **prev_task** in percpu variable `PREV_TASK`.
             #[cfg(feature = "smp")]
             {
@@ -570,6 +567,8 @@ impl AxRunQueue {
                     let ptr: usize = Arc::into_raw(next_task) as _;
                     switch_task(ptr);
                 } else {
+                    let prev_ctx_ptr = prev_task.ctx_mut_ptr();
+                    let next_ctx_ptr = next_task.ctx_mut_ptr();                    
                     CurrentTask::set_current(prev_task, next_task);
                     (*prev_ctx_ptr).switch_to(&*next_ctx_ptr);
                 }
