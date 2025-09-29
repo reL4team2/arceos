@@ -14,6 +14,7 @@ pub(crate) fn event_handler(cpu_id: usize) -> ! {
             #[cfg(feature = "irq")]
             if msg.label() == 0 {
                 // handle interrupt
+                debug!("irq number is :{}", _badge);
                 handle_irq(_badge as _);
                 continue;
             }

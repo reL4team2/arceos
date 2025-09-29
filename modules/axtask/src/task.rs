@@ -510,6 +510,7 @@ impl TaskInner {
         self.wait_for_exit.notify_all(false);
     }
 
+    #[cfg(not(feature = "onsel4"))]
     #[inline]
     pub(crate) const unsafe fn ctx_mut_ptr(&self) -> *mut TaskContext {
         self.ctx.get()

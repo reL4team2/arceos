@@ -165,6 +165,7 @@ dependencies = [
 name = "arceos-irq"
 version = "0.1.0"
 dependencies = [
+ "axplat-aarch64-sel4",
  "axstd",
 ]
 
