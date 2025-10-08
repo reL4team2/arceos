@@ -33,7 +33,7 @@ impl InitIf for InitIfImpl {
     /// * Current monotonic time and wall time can be obtained.
     fn init_early(_cpu_id: usize, _arg: usize) {
         sel4_kit::ipc_buffer::init_ipc_buffer();
-        common::slot::init(common::config::DEFAULT_EMPTY_SLOT_INDEX..0x1000);
+        common::slot::init(0x100..0x1000);
         common::slot::init_recv_slot();
         crate::console::init_early(va!(UART_PADDR));
         crate::time::init_early();
