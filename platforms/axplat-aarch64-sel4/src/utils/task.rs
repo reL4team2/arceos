@@ -3,6 +3,8 @@
 //! It helps us create seL4 tasks in arceos, when porting arceos on seL4.
 //! The [Sel4Task] struct encapsulates the task's TCB, CNode, entry point, stack, and capability set.
 
+use alloc::vec::Vec;
+
 use common::{
     ObjectAllocator,
     config::{CNODE_RADIX_BITS, DEFAULT_PARENT_EP, DEFAULT_SERVE_EP},
@@ -17,6 +19,7 @@ use sel4::{
 use sel4_kit::slot_manager::LeafSlot;
 
 use alloc::sync::Arc;
+use kspin::SpinNoIrq;
 
 use super::obj::{alloc_untyped_raw, alloc_untyped_unit, recycle_untyped_unit};
 use crate::mem::{alloc_ipc_buffer, dealloc_ipc_buffer};
@@ -26,6 +29,41 @@ unsafe extern "C" {
     fn _etdata();
     fn _etbss();
 }
+
+pub(crate) struct IndexAllocator {
+    next: usize,
+    max: usize,
+    recycled: Vec<u64>,
+}
+
+impl IndexAllocator {
+    pub const fn new(max: usize) -> Self {
+        Self {
+            next: 1,
+            max,
+            recycled: Vec::new(),
+        }
+    }
+
+    pub fn alloc(&mut self) -> Option<usize> {
+        if let Some(index) = self.recycled.pop() {
+            Some(index as usize)
+        } else if self.next < self.max {
+            let index = self.next;
+            self.next += 1;
+            Some(index)
+        } else {
+            None
+        }
+    }
+
+    pub fn recycle(&mut self, index: usize) {
+        self.recycled.push(index as u64);
+    }
+}
+
+static TASK_CSPACE_ALLOCATOR: [SpinNoIrq<IndexAllocator>; axconfig::plat::CPU_NUM] =
+    [SpinNoIrq::new(IndexAllocator::new(4096)); axconfig::plat::CPU_NUM];
 
 /// Basic unit representing a task in seL4.
 pub struct Sel4Task {
@@ -84,7 +122,24 @@ impl Sel4Task {
         obj_allocator.init(untyped);
 
         // create a 1-level cspace
-        let cnode = obj_allocator.alloc_cnode(CNODE_RADIX_BITS);
+        let mut cnode = obj_allocator.alloc_cnode(CNODE_RADIX_BITS);
+
+        // move cnode to parent cspace
+        let cnode_index = TASK_CSPACE_ALLOCATOR[affinity]
+            .lock()
+            .alloc()
+            .expect("no more cnode index");
+
+        log::info!("allocate cnode index: {}", cnode_index);
+        sel4::init_thread::slot::CNODE
+            .cap()
+            .absolute_cptr_from_bits_with_depth(cnode_index as _, 52)
+            .copy(&LeafSlot::from_cap(cnode).abs_cptr(), CapRights::all())?;
+
+        cnode = sel4::init_thread::slot::CNODE
+            .cap()
+            .absolute_cptr_from_bits_with_depth((cnode_index << 12) as _, 64)
+            .into_root();
 
         // create a new tcb
         let tcb = obj_allocator.alloc_tcb();
@@ -243,9 +298,11 @@ impl Sel4Task {
         )?;
 
         // copy vspace to thread
-        cnode.absolute_cptr(init_thread::slot::VSPACE.cptr())
-            .copy(&LeafSlot::from(init_thread::slot::VSPACE.cap()).abs_cptr(), CapRights::all())?;        
-                    
+        cnode.absolute_cptr(init_thread::slot::VSPACE.cptr()).copy(
+            &LeafSlot::from(init_thread::slot::VSPACE.cap()).abs_cptr(),
+            CapRights::all(),
+        )?;
+
         tcb.tcb_configure(
             DEFAULT_PARENT_EP.cptr(),
             cnode,
