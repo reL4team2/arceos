@@ -3,8 +3,6 @@
 //! It helps us create seL4 tasks in arceos, when porting arceos on seL4.
 //! The [Sel4Task] struct encapsulates the task's TCB, CNode, entry point, stack, and capability set.
 
-use alloc::vec::Vec;
-
 use common::{
     ObjectAllocator,
     config::{CNODE_RADIX_BITS, DEFAULT_PARENT_EP, DEFAULT_SERVE_EP},
@@ -12,8 +10,9 @@ use common::{
 };
 
 use sel4::{
-    CNodeCapData, CapRights,
+    CNodeCapData, CapRights, CapTypeForObjectOfFixedSize,
     cap::{self, CNode, Endpoint, Granule, Tcb, Untyped},
+    cap_type::{self},
     init_thread,
 };
 use sel4_kit::slot_manager::LeafSlot;
@@ -21,7 +20,9 @@ use sel4_kit::slot_manager::LeafSlot;
 use alloc::sync::Arc;
 use kspin::SpinNoIrq;
 
-use super::obj::{alloc_untyped_raw, alloc_untyped_unit, recycle_untyped_unit};
+use super::obj::{
+    IndexAllocator, TaskCapSet, alloc_untyped_raw, alloc_untyped_unit, recycle_untyped_unit,
+};
 use crate::mem::{alloc_ipc_buffer, dealloc_ipc_buffer};
 
 unsafe extern "C" {
@@ -30,40 +31,8 @@ unsafe extern "C" {
     fn _etbss();
 }
 
-pub(crate) struct IndexAllocator {
-    next: usize,
-    max: usize,
-    recycled: Vec<u64>,
-}
-
-impl IndexAllocator {
-    pub const fn new(max: usize) -> Self {
-        Self {
-            next: 1,
-            max,
-            recycled: Vec::new(),
-        }
-    }
-
-    pub fn alloc(&mut self) -> Option<usize> {
-        if let Some(index) = self.recycled.pop() {
-            Some(index as usize)
-        } else if self.next < self.max {
-            let index = self.next;
-            self.next += 1;
-            Some(index)
-        } else {
-            None
-        }
-    }
-
-    pub fn recycle(&mut self, index: usize) {
-        self.recycled.push(index as u64);
-    }
-}
-
 static TASK_CSPACE_ALLOCATOR: [SpinNoIrq<IndexAllocator>; axconfig::plat::CPU_NUM] =
-    [SpinNoIrq::new(IndexAllocator::new(4096)); axconfig::plat::CPU_NUM];
+    [const { SpinNoIrq::new(IndexAllocator::new(1, 4096 - 1)) }; axconfig::plat::CPU_NUM];
 
 /// Basic unit representing a task in seL4.
 pub struct Sel4Task {
@@ -78,6 +47,7 @@ pub struct Sel4Task {
     pub ipc_buffer_addr: usize,
     pub tid: usize,
     pub affinity: usize,
+    pub cnode_index: usize,
 }
 
 impl Sel4Task {
@@ -95,6 +65,7 @@ impl Sel4Task {
             ipc_buffer_addr: 0,
             tid: 0,
             affinity: 0,
+            cnode_index: 0,
         }
     }
 
@@ -121,36 +92,28 @@ impl Sel4Task {
         let obj_allocator = ObjectAllocator::empty();
         obj_allocator.init(untyped);
 
-        // create a 1-level cspace
-        let mut cnode = obj_allocator.alloc_cnode(CNODE_RADIX_BITS);
-
-        // move cnode to parent cspace
         let cnode_index = TASK_CSPACE_ALLOCATOR[affinity]
             .lock()
             .alloc()
             .expect("no more cnode index");
 
         log::info!("allocate cnode index: {}", cnode_index);
-        sel4::init_thread::slot::CNODE
-            .cap()
-            .absolute_cptr_from_bits_with_depth(cnode_index as _, 52)
-            .copy(&LeafSlot::from_cap(cnode).abs_cptr(), CapRights::all())?;
 
-        cnode = sel4::init_thread::slot::CNODE
-            .cap()
-            .absolute_cptr_from_bits_with_depth((cnode_index << 12) as _, 64)
-            .into_root();
+        // create a 1-level cspace
+        let cnode = obj_allocator.alloc_cnode(CNODE_RADIX_BITS);
+        let mut capset = TaskCapSet::new(cnode, CNODE_RADIX_BITS, 0x100, cnode_index);
 
         // create a new tcb
-        let tcb = obj_allocator.alloc_tcb();
+        let mut tcb = obj_allocator.alloc_tcb();
 
         // create a endpoint for task
         let srv_ep = obj_allocator.alloc_endpoint();
 
         // copy tcb into thread cspace
-        cnode
-            .absolute_cptr_from_bits_with_depth(1, CNODE_RADIX_BITS)
-            .copy(&LeafSlot::from_cap(tcb).abs_cptr(), CapRights::all())?;
+        // cnode
+        //     .absolute_cptr_from_bits_with_depth(1, CNODE_RADIX_BITS)
+        //     .copy(&LeafSlot::from_cap(tcb).abs_cptr(), CapRights::all())?;
+        tcb = capset.add_cap::<cap_type::Tcb>(Some(1), &LeafSlot::from_cap(tcb).abs_cptr())?;
 
         // copy parent endpoint to child
         cnode
@@ -167,6 +130,12 @@ impl Sel4Task {
             .copy(&LeafSlot::from_cap(srv_ep).abs_cptr(), CapRights::all())?;
 
         let (virt, ipc_cap) = alloc_ipc_buffer(&obj_allocator).unwrap();
+
+        // move cnode to parent cspace
+        sel4::init_thread::slot::CNODE
+            .cap()
+            .absolute_cptr_from_bits_with_depth(cnode_index as _, 52)
+            .copy(&LeafSlot::from_cap(cnode).abs_cptr(), CapRights::all())?;
 
         // configure thread tcb
         tcb.tcb_configure(
@@ -222,6 +191,7 @@ impl Sel4Task {
             ipc_buffer_addr: virt,
             tid,
             affinity,
+            cnode_index,
         };
 
         Ok(task)
@@ -340,11 +310,18 @@ impl Sel4Task {
             ipc_buffer_addr: virt,
             tid,
             affinity,
+            cnode_index: 0,
         })
     }
 
     pub fn start(&self) -> sel4::Result<()> {
-        self.tcb.tcb_resume()
+        if self.cnode_index > 0 {
+            LeafSlot::new((self.cnode_index << 12) + 1)
+                .cap()
+                .tcb_resume()
+        } else {
+            self.tcb.tcb_resume()
+        }
     }
 
     pub fn set_affinity(&self, affinity: usize) -> sel4::Result<()> {
@@ -352,7 +329,9 @@ impl Sel4Task {
     }
 
     pub fn suspend(&self) -> sel4::Result<()> {
-        self.tcb.tcb_suspend()
+        LeafSlot::new((self.cnode_index << 12) + 1)
+            .cap()
+            .tcb_suspend()
     }
 
     pub fn exit(&self) {
