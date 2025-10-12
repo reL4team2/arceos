@@ -449,7 +449,14 @@ impl AxRunQueue {
     /// Create a new run queue for the specified CPU.
     /// The run queue is initialized with a per-CPU gc task in its scheduler.
     fn new(cpu_id: usize) -> Self {
-        let gc_task = TaskInner::new(gc_entry, "gc".into(), axconfig::TASK_STACK_SIZE, cpu_id, false).into_arc();
+        let gc_task = TaskInner::new(
+            gc_entry,
+            "gc".into(),
+            axconfig::TASK_STACK_SIZE,
+            cpu_id,
+            false,
+        )
+        .into_arc();
         // gc task should be pinned to the current CPU.
         gc_task.set_cpumask(AxCpuMask::one_shot(cpu_id));
 
@@ -550,35 +557,33 @@ impl AxRunQueue {
         #[cfg(feature = "smp")]
         next_task.set_on_cpu(true);
 
+        // Store the weak pointer of **prev_task** in percpu variable `PREV_TASK`.
+        #[cfg(feature = "smp")]
         unsafe {
-            // Store the weak pointer of **prev_task** in percpu variable `PREV_TASK`.
-            #[cfg(feature = "smp")]
-            {
-                *PREV_TASK.current_ref_mut_raw() = Arc::downgrade(prev_task.as_task_ref());
-            }
-
-            // The strong reference count of `prev_task` will be decremented by 1,
-            // but won't be dropped until `gc_entry()` is called.
-            assert!(Arc::strong_count(prev_task.as_task_ref()) > 1);
-            assert!(Arc::strong_count(&next_task) >= 1);
-
-            cfg_if::cfg_if! {
-                if #[cfg(feature = "onsel4")] {
-                    let ptr: usize = Arc::into_raw(next_task) as _;
-                    switch_task(ptr);
-                } else {
-                    let prev_ctx_ptr = prev_task.ctx_mut_ptr();
-                    let next_ctx_ptr = next_task.ctx_mut_ptr();                    
-                    CurrentTask::set_current(prev_task, next_task);
-                    (*prev_ctx_ptr).switch_to(&*next_ctx_ptr);
-                }
-            }
-
-            // Current it's **next_task** running on this CPU, clear the `prev_task`'s `on_cpu` field
-            // to indicate that it has finished its scheduling process and no longer running on this CPU.
-            #[cfg(feature = "smp")]
-            clear_prev_task_on_cpu();
+            *PREV_TASK.current_ref_mut_raw() = Arc::downgrade(prev_task.as_task_ref());
         }
+
+        // The strong reference count of `prev_task` will be decremented by 1,
+        // but won't be dropped until `gc_entry()` is called.
+        assert!(Arc::strong_count(prev_task.as_task_ref()) > 1);
+        assert!(Arc::strong_count(&next_task) >= 1);
+
+        cfg_if::cfg_if! {
+            if #[cfg(feature = "onsel4")] {
+                let ptr: usize = Arc::into_raw(next_task) as _;
+                switch_task(ptr);
+            } else {
+                let prev_ctx_ptr = prev_task.ctx_mut_ptr();
+                let next_ctx_ptr = next_task.ctx_mut_ptr();
+                CurrentTask::set_current(prev_task, next_task);
+                (*prev_ctx_ptr).switch_to(&*next_ctx_ptr);
+            }
+        }
+
+        // Current it's **next_task** running on this CPU, clear the `prev_task`'s `on_cpu` field
+        // to indicate that it has finished its scheduling process and no longer running on this CPU.
+        #[cfg(feature = "smp")]
+        clear_prev_task_on_cpu();
     }
 }
 
@@ -636,7 +641,13 @@ pub(crate) fn init() {
 
     // Create the `idle` task (not current task).
     const IDLE_TASK_STACK_SIZE: usize = 4096;
-    let idle_task = TaskInner::new(|| crate::run_idle(), "idle".into(), IDLE_TASK_STACK_SIZE, cpu_id, false);
+    let idle_task = TaskInner::new(
+        || crate::run_idle(),
+        "idle".into(),
+        IDLE_TASK_STACK_SIZE,
+        cpu_id,
+        false,
+    );
     // idle task should be pinned to the current CPU.
     idle_task.set_cpumask(AxCpuMask::one_shot(cpu_id));
     IDLE_TASK.with_current(|i| {
