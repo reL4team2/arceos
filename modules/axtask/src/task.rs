@@ -17,7 +17,7 @@ use crate::task_ext::AxTaskExt;
 use crate::{AxCpuMask, AxTask, AxTaskRef, WaitQueue};
 
 #[cfg(feature = "onsel4")]
-use axplat_aarch64_sel4::{create_task, exit_system, exit_task, task::Sel4Task};
+use axplat_aarch64_sel4::{create_task, exit_system, exit_task, task::NormalTask};
 
 /// A unique identifier for a thread.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -82,7 +82,7 @@ pub struct TaskInner {
     tls: TlsArea,
 
     #[cfg(feature = "onsel4")]
-    sel4task: Option<Arc<Sel4Task>>,
+    sel4task: Option<Arc<NormalTask>>,
 }
 
 impl TaskId {
@@ -133,13 +133,14 @@ impl TaskInner {
         t.ctx_mut().init(task_entry as usize, kstack.top(), tls);
 
         t.is_init = is_init;
-        let sel4_task = Sel4Task::new(
+        let sel4_task = NormalTask::new(
             t.id().0 as _,
             task_entry as usize,
             kstack.top().into(),
             100,
             tls.into(),
             affinity,
+            true,
         )
         .unwrap();
         t.sel4task = Some(Arc::new(sel4_task));
@@ -170,7 +171,7 @@ impl TaskInner {
             tls.into(),
             cpu,
         );
-        let arc = unsafe { Arc::from_raw(sel4_task_ptr as *const Sel4Task) };
+        let arc = unsafe { Arc::from_raw(sel4_task_ptr as *const NormalTask) };
         t.sel4task = Some(arc);
 
         t.kstack = Some(kstack);
@@ -286,11 +287,16 @@ impl TaskInner {
             None => error!("sel4task not found"),
         }
     }
+
+    #[cfg(feature = "onsel4")]
+    #[inline]
+    pub(crate) fn sel4_task(&self) -> usize {
+        Arc::into_raw(self.sel4task.clone().unwrap()) as usize
+    }
 }
 
 // private methods
 impl TaskInner {
-    #[cfg(not(feature = "onsel4"))]
     fn new_common(id: TaskId, name: String, cpu: usize) -> Self {
         Self {
             id,
@@ -324,39 +330,39 @@ impl TaskInner {
         }
     }
 
-    #[cfg(feature = "onsel4")]
-    fn new_common(id: TaskId, name: String, cpu: usize) -> Self {
-        Self {
-            id,
-            name,
-            is_idle: false,
-            is_init: false,
-            entry: None,
-            state: AtomicU8::new(TaskState::Ready as u8),
-            // By default, the task is allowed to run on all CPUs.
-            cpumask: SpinNoIrq::new(AxCpuMask::one_shot(cpu)),
-            in_wait_queue: AtomicBool::new(false),
-            #[cfg(feature = "irq")]
-            timer_ticket_id: AtomicU64::new(0),
-            cpu_id: AtomicU32::new(0),
-            #[cfg(feature = "smp")]
-            on_cpu: AtomicBool::new(false),
-            #[cfg(feature = "preempt")]
-            need_resched: AtomicBool::new(false),
-            #[cfg(feature = "preempt")]
-            preempt_disable_count: AtomicUsize::new(0),
-            exit_code: AtomicI32::new(0),
-            wait_for_exit: WaitQueue::new(),
-            kstack: None,
-            ctx: UnsafeCell::new(TaskContext::new()),
-            task_ext: AxTaskExt::empty(),
-            #[cfg(feature = "tls")]
-            tls: TlsArea::alloc(),
-            // seL4 thread
-            #[cfg(feature = "onsel4")]
-            sel4task: None,
-        }
-    }
+    // #[cfg(feature = "onsel4")]
+    // fn new_common(id: TaskId, name: String, cpu: usize) -> Self {
+    //     Self {
+    //         id,
+    //         name,
+    //         is_idle: false,
+    //         is_init: false,
+    //         entry: None,
+    //         state: AtomicU8::new(TaskState::Ready as u8),
+    //         // By default, the task is allowed to run on all CPUs.
+    //         cpumask: SpinNoIrq::new(AxCpuMask::one_shot(cpu)),
+    //         in_wait_queue: AtomicBool::new(false),
+    //         #[cfg(feature = "irq")]
+    //         timer_ticket_id: AtomicU64::new(0),
+    //         cpu_id: AtomicU32::new(0),
+    //         #[cfg(feature = "smp")]
+    //         on_cpu: AtomicBool::new(false),
+    //         #[cfg(feature = "preempt")]
+    //         need_resched: AtomicBool::new(false),
+    //         #[cfg(feature = "preempt")]
+    //         preempt_disable_count: AtomicUsize::new(0),
+    //         exit_code: AtomicI32::new(0),
+    //         wait_for_exit: WaitQueue::new(),
+    //         kstack: None,
+    //         ctx: UnsafeCell::new(TaskContext::new()),
+    //         task_ext: AxTaskExt::empty(),
+    //         #[cfg(feature = "tls")]
+    //         tls: TlsArea::alloc(),
+    //         // seL4 thread
+    //         #[cfg(feature = "onsel4")]
+    //         sel4task: None,
+    //     }
+    // }
 
     /// Creates an "init task" using the current CPU states, to use as the
     /// current task.
