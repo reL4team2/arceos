@@ -5,7 +5,7 @@ use common::ObjectAllocator;
 use common::root::translate_addr;
 
 use crate::config::devices::MMIO_RANGES;
-use crate::utils::obj::alloc_pt;
+use crate::utils::obj::{alloc_pt, CapSet};
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use kspin::SpinNoIrq;
@@ -65,6 +65,7 @@ impl MemSpace {
         assert_eq!(vaddr % LARGE_PAGE_SIZE, 0);
         assert!(size > 0);
 
+        log::info!("map memory area vaddr: {:#x}, size: {:#x}", vaddr, size);
         let caps = self.mem_allocator.alloc_large_pages(size / LARGE_PAGE_SIZE);
         let mut total_size: usize = 0;
         let paddr = caps[0]
@@ -77,6 +78,31 @@ impl MemSpace {
         }
 
         self.add_region(vaddr, paddr, total_size);
+    }
+
+    fn map_page_by_capset(&self, vaddr: usize, page: &self::cap::Granule, capset: &mut CapSet) {
+        assert_eq!(vaddr % PAGE_SIZE, 0);
+        for _ in 0..sel4::vspace_levels::NUM_LEVELS {
+            let res = page.frame_map(
+                self.vspace,
+                vaddr as _,
+                sel4::CapRights::all(),
+                sel4::VmAttributes::DEFAULT,
+            );
+            match res {
+                Ok(_) => {
+                    return;
+                }
+                Err(sel4::Error::FailedLookup) => {
+                    let pt_cap = capset.alloc_pt(None).unwrap();
+                    pt_cap
+                        .pt_map(self.vspace, vaddr as _, sel4::VmAttributes::DEFAULT)
+                        .unwrap();
+                }
+                _ => res.unwrap(),
+            }
+        }
+        unreachable!("Failed to map page at vaddr {:#x}", vaddr);
     }
 
     fn map_page(&self, vaddr: usize, page: &self::cap::Granule, allocator: &ObjectAllocator) {
@@ -147,6 +173,21 @@ impl MemSpace {
         }
 
         paddr
+    }
+
+    fn alloc_ipc_buffer_by_capset(
+        &self,
+        capset: &mut CapSet,
+    ) -> sel4::Result<(usize, sel4::cap::Granule)> {
+        // Allocate an IPC buffer at a fixed address.
+        let ipc_vpn = self
+            .vp_allocator
+            .lock()
+            .alloc()
+            .ok_or(sel4::Error::NotEnoughMemory)?;
+        let ipc_cap = capset.alloc_page(None)?;
+        self.map_page_by_capset(ipc_vpn * PAGE_SIZE, &ipc_cap, capset);
+        Ok((ipc_vpn * PAGE_SIZE, ipc_cap))
     }
 
     fn alloc_ipc_buffer(
@@ -223,6 +264,12 @@ pub(crate) fn alloc_ipc_buffer(
     allocator: &ObjectAllocator,
 ) -> sel4::Result<(usize, sel4::cap::Granule)> {
     MEM_SPACE.alloc_ipc_buffer(allocator)
+}
+
+pub(crate) fn alloc_ipc_buffer_by_capset(
+    capset: &mut CapSet,
+) -> sel4::Result<(usize, sel4::cap::Granule)> {
+    MEM_SPACE.alloc_ipc_buffer_by_capset(capset)
 }
 
 pub(crate) fn dealloc_ipc_buffer(virt: usize) {

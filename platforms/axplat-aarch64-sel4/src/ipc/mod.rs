@@ -8,6 +8,7 @@ pub enum ServiceEvent {
     SwitchTask,
     ExitTask,
     ExitSystem,
+    MigrateTask,
 }
 
 macro_rules! call_ep {
@@ -27,3 +28,6 @@ pub fn exit_task(task: usize) -> usize {}
 
 #[generate_ipc_send(label = ServiceEvent::ExitSystem)]
 pub fn exit_system() -> usize {}
+
+#[generate_ipc_send(label = ServiceEvent::MigrateTask)]
+pub fn migrate_task(task: usize, cpu_id: usize) -> usize {}

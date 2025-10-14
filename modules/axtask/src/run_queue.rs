@@ -17,7 +17,7 @@ use crate::wait_queue::WaitQueueGuard;
 use crate::{AxCpuMask, AxTaskRef, Scheduler, TaskInner, WaitQueue};
 
 #[cfg(feature = "onsel4")]
-use axplat_aarch64_sel4::switch_task;
+use axplat_aarch64_sel4::{switch_task, migrate_task};
 
 macro_rules! percpu_static {
     ($(
@@ -173,6 +173,14 @@ pub(crate) fn select_run_queue<G: BaseGuard>(task: &AxTaskRef) -> AxRunQueueRef<
     {
         // When SMP is enabled, select the run queue based on the task's CPU affinity and load balance.
         let index = select_run_queue_index(task.cpumask());
+        
+        // migrate sel4 task to the correct CPU
+        #[cfg(feature = "onsel4")]
+        {
+            let sel4_task = task.sel4_task();
+            migrate_task(sel4_task, index);
+        }
+
         AxRunQueueRef {
             inner: get_run_queue(index),
             state: irq_state,
@@ -306,7 +314,7 @@ impl<G: BaseGuard> CurrentRunQueueRef<'_, G> {
     #[cfg(feature = "smp")]
     pub fn migrate_current(&mut self, migration_task: AxTaskRef) {
         let curr = &self.current_task;
-        trace!("task migrate: {}", curr.id_name());
+        info!("task migrate: {}", curr.id_name());
         assert!(curr.is_running());
 
         // Mark current task's state as `Ready`,
@@ -583,7 +591,7 @@ impl AxRunQueue {
         // Current it's **next_task** running on this CPU, clear the `prev_task`'s `on_cpu` field
         // to indicate that it has finished its scheduling process and no longer running on this CPU.
         #[cfg(feature = "smp")]
-        clear_prev_task_on_cpu();
+        unsafe { clear_prev_task_on_cpu(); }
     }
 }
 

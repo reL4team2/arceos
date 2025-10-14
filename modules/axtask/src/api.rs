@@ -89,6 +89,7 @@ pub fn init_scheduler_secondary() {
 #[cfg(feature = "onsel4")]
 pub fn switch_sel4_task(next_ptr: usize) {
     let task = unsafe { Arc::from_raw(next_ptr as *const AxTask) };
+    log::info!("switch to sel4 task {}", task.id_name());
     unsafe {
         current().suspend();
         task.start();
@@ -182,9 +183,12 @@ pub fn set_current_affinity(cpumask: AxCpuMask) -> bool {
                 MIGRATION_TASK_STACK_SIZE,
             )
             .into_arc();
+            log::info!("before, current cpu is {:?}, current task is {}", axhal::percpu::this_cpu_id(), current().clone().id_name());
 
             // Migrate the current task to the correct CPU using the migration task.
             current_run_queue::<NoPreemptIrqSave>().migrate_current(migration_task);
+
+            log::info!("after, current cpu is {:?}, current task is {}", axhal::percpu::this_cpu_id(), current().clone().id_name());
 
             assert!(
                 cpumask.get(axhal::percpu::this_cpu_id()),
@@ -227,6 +231,7 @@ pub fn exit(exit_code: i32) -> ! {
 ///
 /// It runs an infinite loop that keeps calling [`yield_now()`].
 pub fn run_idle() -> ! {
+    info!("Run idle task on CPU {}.", axhal::percpu::this_cpu_id());
     loop {
         yield_now();
         debug!("idle task: waiting for IRQs...");
