@@ -6,13 +6,11 @@
 use common::{
     ObjectAllocator,
     config::{CNODE_RADIX_BITS, DEFAULT_PARENT_EP, DEFAULT_SERVE_EP},
-    slot::recycle_slot,
 };
 
 use sel4::{
-    CNodeCapData, CapRights, CapTypeForObjectOfFixedSize,
-    cap::{self, CNode, Endpoint, Granule, Tcb, Untyped},
-    cap_type::{self},
+    CNodeCapData, CapRights,
+    cap::{self},
     init_thread,
 };
 use sel4_kit::slot_manager::LeafSlot;
@@ -21,9 +19,9 @@ use alloc::sync::Arc;
 use kspin::SpinNoIrq;
 
 use super::obj::{
-    IndexAllocator, TaskCapSet, alloc_untyped_raw, alloc_untyped_unit, recycle_untyped_unit,
+    IndexAllocator, CapSet, alloc_untyped_raw, alloc_untyped_unit, ALLOC_SIZE_BITS,
 };
-use crate::mem::{alloc_ipc_buffer, dealloc_ipc_buffer};
+use crate::mem::{alloc_ipc_buffer, alloc_ipc_buffer_by_capset, dealloc_ipc_buffer};
 
 unsafe extern "C" {
     fn _stdata();
@@ -31,45 +29,23 @@ unsafe extern "C" {
     fn _etbss();
 }
 
-static TASK_CSPACE_ALLOCATOR: [SpinNoIrq<IndexAllocator>; axconfig::plat::CPU_NUM] =
-    [const { SpinNoIrq::new(IndexAllocator::new(1, 4096 - 1)) }; axconfig::plat::CPU_NUM];
+static TASK_CSPACE_ALLOCATOR: SpinNoIrq<IndexAllocator> =
+    const { SpinNoIrq::new(IndexAllocator::new(1, 4096 - 1)) };
 
 /// Basic unit representing a task in seL4.
-pub struct Sel4Task {
-    pub tcb: cap::Tcb,
-    pub cnode: cap::CNode,
-    pub ep: cap::Endpoint,
+pub struct NormalTask {
     pub entry: usize,
     pub stack: usize,
-    pub capset: ObjectAllocator,
+    pub capset: CapSet,
     pub untyped: cap::Untyped,
-    pub ipc_buffer: cap::Granule,
     pub ipc_buffer_addr: usize,
     pub tid: usize,
     pub affinity: usize,
     pub cnode_index: usize,
 }
 
-impl Sel4Task {
-    /// Create a empty Sel4Task Struct
-    pub fn empty() -> Sel4Task {
-        Self {
-            tcb: Tcb::from_bits(0),
-            cnode: CNode::from_bits(0),
-            ep: Endpoint::from_bits(0),
-            entry: 0,
-            stack: 0,
-            capset: ObjectAllocator::empty(),
-            untyped: Untyped::from_bits(0),
-            ipc_buffer: Granule::from_bits(0),
-            ipc_buffer_addr: 0,
-            tid: 0,
-            affinity: 0,
-            cnode_index: 0,
-        }
-    }
-
-    /// Initialize a new Sel4Task with the given parameters.
+impl NormalTask {
+    /// Initialize a new NormalTask with the given parameters.
     /// This method allocates a TCB, a CNode, and an IPC buffer,
     /// and configures the TCB with the provided entry point and stack.
     pub fn new(
@@ -78,94 +54,85 @@ impl Sel4Task {
         stack: usize,
         priority: usize,
         _tls: usize,
-        affinity: usize,
+        cpu_id: usize,
+        direct: bool,
     ) -> sel4::Result<Self> {
         log::debug!(
             "create new task on cpu {}: tid: {:#x}, entry: {:#x}, stack: {:#x}",
-            affinity,
+            cpu_id,
             tid,
             entry,
             stack
         );
-
+        
+        // allocate untyped for task
         let (untyped, _) = alloc_untyped_unit();
-        let obj_allocator = ObjectAllocator::empty();
-        obj_allocator.init(untyped);
-
-        let cnode_index = TASK_CSPACE_ALLOCATOR[affinity]
+        let cnode_index = TASK_CSPACE_ALLOCATOR
             .lock()
             .alloc()
             .expect("no more cnode index");
 
-        log::info!("allocate cnode index: {}", cnode_index);
-
-        // create a 1-level cspace
-        let cnode = obj_allocator.alloc_cnode(CNODE_RADIX_BITS);
-        let mut capset = TaskCapSet::new(cnode, CNODE_RADIX_BITS, 0x100, cnode_index);
+        let mut capset = CapSet::new(cnode_index, CNODE_RADIX_BITS, untyped, 1 << ALLOC_SIZE_BITS, 0x100)?;
 
         // create a new tcb
-        let mut tcb = obj_allocator.alloc_tcb();
+        let tcb = capset.alloc_tcb(Some(1))?;
 
         // create a endpoint for task
-        let srv_ep = obj_allocator.alloc_endpoint();
-
-        // copy tcb into thread cspace
-        // cnode
-        //     .absolute_cptr_from_bits_with_depth(1, CNODE_RADIX_BITS)
-        //     .copy(&LeafSlot::from_cap(tcb).abs_cptr(), CapRights::all())?;
-        tcb = capset.add_cap::<cap_type::Tcb>(Some(1), &LeafSlot::from_cap(tcb).abs_cptr())?;
+        capset.alloc_endpoint(Some(DEFAULT_SERVE_EP.bits() as usize))?;
 
         // copy parent endpoint to child
-        cnode
-            .absolute_cptr_from_bits_with_depth(DEFAULT_PARENT_EP.bits(), CNODE_RADIX_BITS)
+        capset.root_cnode()
+            .absolute_cptr_from_bits_with_depth(DEFAULT_PARENT_EP.bits(), 64)
             .mint(
                 &LeafSlot::from(DEFAULT_SERVE_EP).abs_cptr(),
                 CapRights::all(),
                 tid as _,
             )?;
 
-        // copy srv endpoint to cnode
-        cnode
-            .absolute_cptr_from_bits_with_depth(DEFAULT_SERVE_EP.bits(), CNODE_RADIX_BITS)
-            .copy(&LeafSlot::from_cap(srv_ep).abs_cptr(), CapRights::all())?;
+        // copy cnode to all cpu init task
+        if !direct {
+            for i in 1..axconfig::plat::CPU_NUM {
+                let init_cnode = LeafSlot::new((0x90 + i) as _).cap();
+                init_cnode
+                    .absolute_cptr_from_bits_with_depth(cnode_index as _, 64 - CNODE_RADIX_BITS)
+                    .copy(
+                        &sel4::init_thread::slot::CNODE
+                            .cap()
+                            .absolute_cptr_from_bits_with_depth(cnode_index as _, 64 - CNODE_RADIX_BITS),
+                        CapRights::all(),
+                    )?;
+            }    
+        }
 
-        let (virt, ipc_cap) = alloc_ipc_buffer(&obj_allocator).unwrap();
-
-        // move cnode to parent cspace
-        sel4::init_thread::slot::CNODE
-            .cap()
-            .absolute_cptr_from_bits_with_depth(cnode_index as _, 52)
-            .copy(&LeafSlot::from_cap(cnode).abs_cptr(), CapRights::all())?;
+        let (virt, ipc_cap) = alloc_ipc_buffer_by_capset(&mut capset)?;
 
         // configure thread tcb
         tcb.tcb_configure(
             DEFAULT_PARENT_EP.cptr(),
-            cnode,
+            capset.root_cnode(),
             CNodeCapData::skip_high_bits(CNODE_RADIX_BITS),
             init_thread::slot::VSPACE.cap(),
             virt as _,
             ipc_cap,
-        )
-        .unwrap();
+        )?;
 
         let mut sp = stack;
         if _tls > 0 {
-            tcb.tcb_set_tls_base(_tls as _).unwrap();
+            tcb.tcb_set_tls_base(_tls as _)?;
         } else {
             // reserve tls region on stack
             sp = stack - 0x100;
-            tcb.tcb_set_tls_base(stack as _).unwrap();
+            tcb.tcb_set_tls_base(stack as _)?;
         }
 
-        tcb.tcb_set_sched_params(sel4::init_thread::slot::TCB.cap(), 0, priority as _)
-            .unwrap();
+        tcb.tcb_set_sched_params(sel4::init_thread::slot::TCB.cap(), 0, priority as _)?;
 
         // set init context
-        let mut regs = tcb.tcb_read_all_registers(true).unwrap();
+        let mut regs = tcb.tcb_read_all_registers(true)?;
         *regs.pc_mut() = entry as _;
         *regs.sp_mut() = sp as _;
         *regs.gpr_mut(8) = virt as _;
-        *regs.gpr_mut(0) = affinity as _;
+        *regs.gpr_mut(0) = cpu_id as _;
         unsafe {
             core::arch::asm!(
                 "str x28, [{0}]",
@@ -174,30 +141,68 @@ impl Sel4Task {
             );
         }
 
-        tcb.tcb_write_all_registers(false, &mut regs).unwrap();
+        tcb.tcb_write_all_registers(false, &mut regs)?;
 
-        // set affinity
-        tcb.tcb_set_affinity(affinity as _).unwrap();
+        tcb.tcb_set_affinity(cpu_id as _)?;
 
         let task = Self {
-            tcb,
-            cnode,
-            ep: srv_ep,
             entry,
             stack: sp,
-            capset: obj_allocator,
+            capset,
             untyped,
-            ipc_buffer: ipc_cap,
             ipc_buffer_addr: virt,
             tid,
-            affinity,
+            affinity: cpu_id,
             cnode_index,
         };
-
+        
         Ok(task)
     }
 
-    pub fn new_init_task(entry: usize, stack: usize, affinity: usize) -> sel4::Result<Self> {
+    pub fn start(&self) -> sel4::Result<()> {
+        LeafSlot::new((self.cnode_index << CNODE_RADIX_BITS) + 1).cap().tcb_resume()
+    }
+
+    pub fn migrate(&self, target: usize) -> sel4::Result<()> {
+        log::info!("migrate task {:#x} from cpu {} to cpu {}", self.tid, self.affinity, target);
+        if self.affinity == target {
+            return Ok(());
+        }
+
+        // LeafSlot::new((self.cnode_index << CNODE_RADIX_BITS) + 1).cap().tcb_set_affinity(target as _)?;
+
+        // self.affinity = target;
+
+        Ok(())
+    }
+
+    pub fn suspend(&self) -> sel4::Result<()> {
+        LeafSlot::new((self.cnode_index << CNODE_RADIX_BITS) + 1).cap().tcb_suspend()
+    }
+
+    pub fn exit(&self) {
+        self.capset.exit();
+
+        dealloc_ipc_buffer(self.ipc_buffer_addr);
+
+        let cnode_abspath = sel4::init_thread::slot::CNODE
+            .cap()
+            .absolute_cptr_from_bits_with_depth(self.cnode_index as _, 64 - CNODE_RADIX_BITS);
+        cnode_abspath.revoke().unwrap();
+        cnode_abspath.delete().unwrap();
+
+        TASK_CSPACE_ALLOCATOR
+            .lock()
+            .recycle(self.cnode_index);
+    }
+}
+
+pub(crate) struct InitTask {
+    pub tcb: cap::Tcb,
+}
+
+impl InitTask {
+    pub fn new(entry: usize, stack: usize, affinity: usize) -> sel4::Result<Self> {
         let (untyped, _) = alloc_untyped_unit();
         let obj_allocator = ObjectAllocator::empty();
         obj_allocator.init(untyped);
@@ -239,6 +244,13 @@ impl Sel4Task {
             CapRights::all(),
             CNodeCapData::skip_high_bits(2 * CNODE_RADIX_BITS).into_word(),
         )?;
+
+        init_thread::slot::CNODE.cap()
+            .absolute_cptr_from_bits_with_depth((0x90 + affinity) as _, 64)
+            .copy(
+                &LeafSlot::from_cap(cnode).abs_cptr(),
+                CapRights::all(),
+            )?;
 
         // copy tcb into thread cspace
         cnode
@@ -298,58 +310,11 @@ impl Sel4Task {
 
         tcb.tcb_set_affinity(affinity as _)?;
 
-        Ok(Self {
-            tcb,
-            cnode,
-            ep,
-            entry,
-            stack: sp,
-            capset: obj_allocator,
-            untyped,
-            ipc_buffer: ipc_cap,
-            ipc_buffer_addr: virt,
-            tid,
-            affinity,
-            cnode_index: 0,
-        })
+        Ok(Self { tcb })
     }
 
     pub fn start(&self) -> sel4::Result<()> {
-        if self.cnode_index > 0 {
-            LeafSlot::new((self.cnode_index << 12) + 1)
-                .cap()
-                .tcb_resume()
-        } else {
-            self.tcb.tcb_resume()
-        }
-    }
-
-    pub fn set_affinity(&self, affinity: usize) -> sel4::Result<()> {
-        self.tcb.tcb_set_affinity(affinity as _)
-    }
-
-    pub fn suspend(&self) -> sel4::Result<()> {
-        LeafSlot::new((self.cnode_index << 12) + 1)
-            .cap()
-            .tcb_suspend()
-    }
-
-    pub fn exit(&self) {
-        let root_cnode = sel4::init_thread::slot::CNODE.cap();
-        root_cnode.absolute_cptr(self.tcb).revoke().unwrap();
-        root_cnode.absolute_cptr(self.tcb).delete().unwrap();
-        root_cnode.absolute_cptr(self.cnode).revoke().unwrap();
-        root_cnode.absolute_cptr(self.cnode).delete().unwrap();
-        root_cnode.absolute_cptr(self.ep).revoke().unwrap();
-        root_cnode.absolute_cptr(self.ep).delete().unwrap();
-        root_cnode.absolute_cptr(self.ipc_buffer).revoke().unwrap();
-        root_cnode.absolute_cptr(self.ipc_buffer).delete().unwrap();
-        recycle_slot(self.tcb.into());
-        recycle_slot(self.cnode.into());
-        recycle_slot(self.ep.into());
-        recycle_slot(self.ipc_buffer.into());
-        dealloc_ipc_buffer(self.ipc_buffer_addr);
-        recycle_untyped_unit(self.untyped);
+        self.tcb.tcb_resume()
     }
 }
 
@@ -358,15 +323,21 @@ pub fn create_sel4_task(
     entry: usize,
     stack: usize,
     tls: usize,
-    affinity: usize,
+    cpu_id: usize,
 ) -> usize {
-    let t = Arc::new(Sel4Task::new(tid, entry, stack, 100, tls, affinity).unwrap());
+    let t = Arc::new(NormalTask::new(tid, entry, stack, 100, tls, cpu_id, false).unwrap());
     let ptr = Arc::into_raw(t);
     ptr as usize
 }
 
 pub fn exit_sel4_task(task_ptr: usize) {
-    let t = unsafe { Arc::from_raw(task_ptr as *const Sel4Task) };
-    log::debug!("exit sel4 task, tid: {}", t.tid);
+    let t = unsafe { Arc::from_raw(task_ptr as *const NormalTask) };
     t.exit();
+}
+
+pub fn migrate_sel4_task(task_ptr: usize, target: usize) {
+    let t = unsafe { Arc::from_raw(task_ptr as *const NormalTask) };
+
+    // move capset
+    t.migrate(target).unwrap();
 }

@@ -1,7 +1,8 @@
 use axplat_aarch64_sel4::ServiceEvent;
 #[cfg(feature = "irq")]
 use axplat_aarch64_sel4::irq::handle_irq;
-use axplat_aarch64_sel4::task::{create_sel4_task, exit_sel4_task};
+use axplat_aarch64_sel4::task::{create_sel4_task, exit_sel4_task, migrate_sel4_task};
+use axplat_aarch64_sel4::ipc::*;
 use common::config::DEFAULT_SERVE_EP;
 use common::{read_types, reply_with};
 use sel4::{with_ipc_buffer_mut, Fault, with_ipc_buffer};
@@ -43,17 +44,38 @@ pub(crate) fn event_handler(cpu_id: usize) -> ! {
                 ServiceEvent::CreateTask => {
                     let (tid, entry, stack, tls, affinity) =
                         read_types!(ib, usize, usize, usize, usize, usize);
-                    let task_ptr = create_sel4_task(tid, entry, stack, tls, affinity);
-                    reply_with!(ib, task_ptr);
+                    info!("Create task {} entry {:#x} stack {:#x} tls {:#x} affinity {:#x} on cpu {}",
+                        tid, entry, stack, tls, affinity, cpu_id);
+                    if cpu_id == 0 {
+                        let task_ptr = create_sel4_task(tid, entry, stack, tls, affinity);
+                        reply_with!(ib, task_ptr);
+                    } else {
+                        let task_ptr = create_task(tid, entry, stack, tls, affinity);
+                        reply_with!(ib, task_ptr);
+                    }
                 }
                 ServiceEvent::ExitTask => {
                     let task_ptr = read_types!(ib, usize);
-                    exit_sel4_task(task_ptr);
+                    info!("Exit task {:#x} on cpu {}", task_ptr, cpu_id);
+                    if cpu_id == 0 {
+                        exit_sel4_task(task_ptr);
+                    } else {
+                        exit_task(task_ptr);
+                    }
                     reply_with!(ib, 0);
                 }
                 ServiceEvent::ExitSystem => {
                     reply_with!(ib, 0);
                     break;
+                }
+                ServiceEvent::MigrateTask => {
+                    let (task_ptr, target) = read_types!(ib, usize, usize);
+                    if cpu_id == 0 {
+                        migrate_sel4_task(task_ptr, target);
+                    } else {
+                        error!("Only cpu 0 can migrate tasks");
+                    }
+                    reply_with!(ib, 0);
                 }
             }
         }
