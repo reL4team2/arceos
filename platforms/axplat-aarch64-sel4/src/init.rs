@@ -48,7 +48,7 @@ impl InitIf for InitIfImpl {
     /// See [`init_early`] for details.
     #[cfg(feature = "smp")]
     fn init_early_secondary(_cpu_id: usize) {
-        crate::utils::obj::init();
+        crate::utils::obj::init_secondary();
     }
 
     /// Initializes the platform at the later stage for the primary core.
@@ -78,6 +78,9 @@ impl InitIf for InitIfImpl {
     fn init_later(_cpu_id: usize, _arg: usize) {
         #[cfg(feature = "irq")]
         crate::irq::init_later();
+
+        #[cfg(feature = "smp")]
+        crate::power::init_secondary_task();
     }
 
     /// Initializes the platform at the later stage for secondary cores.
