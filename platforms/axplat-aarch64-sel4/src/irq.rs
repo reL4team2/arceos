@@ -1,6 +1,6 @@
 //! This module provides the implementation of the IRQ interface for the seL4 platform.
 //! It initializes the IRQ handler, registers IRQs, and provides methods to enable/disable
-use axplat::irq::{HandlerTable, IrqHandler, IrqIf, IpiTarget};
+use axplat::irq::{HandlerTable, IpiTarget, IrqHandler, IrqIf};
 use kspin::SpinNoIrq;
 use lazyinit::LazyInit;
 
@@ -17,6 +17,7 @@ const MAX_IRQ_COUNT: usize = 1024;
 
 static IRQ_HANDLER_TABLE: HandlerTable<MAX_IRQ_COUNT> = HandlerTable::new();
 
+#[percpu::def_percpu]
 static IRQ_CAPS: LazyInit<SpinNoIrq<IrqCap>> = LazyInit::new();
 
 #[allow(unused_macros)]
@@ -36,31 +37,44 @@ macro_rules! handle_trap {
 }
 
 pub(crate) fn init_early() {
-    IRQ_CAPS.init_once(SpinNoIrq::new(IrqCap::new()));
+    IRQ_CAPS.with_current(|irq_cap| {
+        irq_cap.init_once(SpinNoIrq::new(IrqCap::new()));
+    });
 }
 
 pub(crate) fn init_later() {
-    IRQ_CAPS.lock().init().unwrap();
+    IRQ_CAPS.with_current(|irq_cap| {
+        irq_cap.lock().init().unwrap();
+    });
 }
 
 pub fn handle_irq(badge: usize) {
     handle_trap!(IRQ, badge as _);
-    IRQ_CAPS.lock().ack_irq(badge as _);
+
+    IRQ_CAPS.with_current(|irq_cap| {
+        irq_cap.lock().ack_irq(badge as _);
+    });
 }
 
 #[inline(always)]
 pub fn irqs_enabled() -> bool {
-    IRQ_CAPS.lock().irqs_enabled()
+    unsafe { IRQ_CAPS.current_ref_mut_raw() }
+        .lock()
+        .irqs_enabled()
 }
 
 #[inline(always)]
 pub fn enable_irqs() {
-    IRQ_CAPS.lock().enable_irqs();
+    IRQ_CAPS.with_current(|irq_cap| {
+        irq_cap.lock().enable_irqs();
+    });
 }
 
 #[inline(always)]
 pub fn disable_irqs() {
-    IRQ_CAPS.lock().disable_irqs();
+    IRQ_CAPS.with_current(|irq_cap| {
+        irq_cap.lock().disable_irqs();
+    });
 }
 
 /// Represents the IRQ capabilities and handlers for the seL4 platform.
@@ -152,7 +166,9 @@ impl IrqIf for IrqIfImpl {
     /// Enables or disables the given IRQ.
     fn set_enable(irq: usize, enabled: bool) {
         if enabled {
-            IRQ_CAPS.lock().register_sel4_irq(irq).unwrap();
+            IRQ_CAPS.with_current(|irq_cap| {
+                irq_cap.lock().register_sel4_irq(irq).unwrap();
+            });
         } else {
             log::warn!(
                 "Disabling IRQ on seL4 platform {} is not supported now!",
@@ -167,7 +183,9 @@ impl IrqIf for IrqIfImpl {
     /// if the registration failed.
     fn register(irq: usize, handler: IrqHandler) -> bool {
         if IRQ_HANDLER_TABLE.register_handler(irq as _, handler) {
-            IRQ_CAPS.lock().register_sel4_irq(irq).unwrap();
+            IRQ_CAPS.with_current(|irq_cap| {
+                irq_cap.lock().register_sel4_irq(irq).unwrap();
+            });
             return true;
         }
 
@@ -179,7 +197,9 @@ impl IrqIf for IrqIfImpl {
     /// It also disables the IRQ if the unregistration succeeds. It returns the
     /// existing handler if it is registered, `None` otherwise.
     fn unregister(irq: usize) -> Option<IrqHandler> {
-        IRQ_CAPS.lock().remove_sel4_irq(irq);
+        IRQ_CAPS.with_current(|irq_cap| {
+            irq_cap.lock().remove_sel4_irq(irq);
+        });
         IRQ_HANDLER_TABLE.unregister_handler(irq as _)
     }
 
