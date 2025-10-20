@@ -17,7 +17,7 @@ use crate::wait_queue::WaitQueueGuard;
 use crate::{AxCpuMask, AxTaskRef, Scheduler, TaskInner, WaitQueue};
 
 #[cfg(feature = "onsel4")]
-use axplat_aarch64_sel4::{switch_task, migrate_task};
+use axplat_aarch64_sel4::{migrate_task, switch_task};
 
 macro_rules! percpu_static {
     ($(
@@ -173,7 +173,7 @@ pub(crate) fn select_run_queue<G: BaseGuard>(task: &AxTaskRef) -> AxRunQueueRef<
     {
         // When SMP is enabled, select the run queue based on the task's CPU affinity and load balance.
         let index = select_run_queue_index(task.cpumask());
-        
+
         // migrate sel4 task to the correct CPU
         #[cfg(feature = "onsel4")]
         {
@@ -314,7 +314,6 @@ impl<G: BaseGuard> CurrentRunQueueRef<'_, G> {
     #[cfg(feature = "smp")]
     pub fn migrate_current(&mut self, migration_task: AxTaskRef) {
         let curr = &self.current_task;
-        info!("task migrate: {}", curr.id_name());
         assert!(curr.is_running());
 
         // Mark current task's state as `Ready`,
@@ -578,8 +577,10 @@ impl AxRunQueue {
 
         cfg_if::cfg_if! {
             if #[cfg(feature = "onsel4")] {
-                let ptr: usize = Arc::into_raw(next_task) as _;
-                switch_task(ptr);
+                let prev_task_id: usize = prev_task.sel4_task() as _;
+                let next_task_id: usize = next_task.sel4_task() as _;
+                unsafe { CurrentTask::set_current(prev_task, next_task) };
+                switch_task(prev_task_id, next_task_id);
             } else {
                 let prev_ctx_ptr = prev_task.ctx_mut_ptr();
                 let next_ctx_ptr = next_task.ctx_mut_ptr();
@@ -591,7 +592,9 @@ impl AxRunQueue {
         // Current it's **next_task** running on this CPU, clear the `prev_task`'s `on_cpu` field
         // to indicate that it has finished its scheduling process and no longer running on this CPU.
         #[cfg(feature = "smp")]
-        unsafe { clear_prev_task_on_cpu(); }
+        unsafe {
+            clear_prev_task_on_cpu();
+        }
     }
 }
 

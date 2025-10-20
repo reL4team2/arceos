@@ -1,11 +1,15 @@
 //! seL4 global object allocator and task object allocator.
 use alloc::vec::Vec;
-use common::{ObjectAllocator, slot::{alloc_slot, recycle_slot}};
+use common::{
+    ObjectAllocator,
+    slot::{alloc_slot, recycle_slot},
+};
 use kspin::SpinNoIrq;
 use sel4::{
-    AbsoluteCPtr, Cap, cap_type, CapRights, CNodeCapData,
+    AbsoluteCPtr, CNodeCapData, Cap, CapRights, CapTypeForObjectOfFixedSize,
+    CapTypeForObjectOfVariableSize,
     cap::{CNode, Notification, PT, Untyped},
-    CapTypeForObjectOfFixedSize, CapTypeForObjectOfVariableSize,
+    cap_type,
 };
 use sel4_kit::slot_manager::LeafSlot;
 
@@ -27,6 +31,33 @@ pub fn alloc_cnode(size_bits: usize) -> CNode {
 pub fn init() {
     unsafe {
         OBJ_ALLOCATOR.current_ref_raw().init(Cap::from_bits(23));
+    }
+
+    sel4::init_thread::slot::CNODE
+        .cap()
+        .absolute_cptr_from_bits_with_depth(0x90 as _, 64)
+        .copy(
+            &LeafSlot::from_cap(sel4::init_thread::slot::CNODE.cap()).abs_cptr(),
+            CapRights::all(),
+        )
+        .unwrap();
+}
+
+pub fn init_secondary() {
+    unsafe {
+        OBJ_ALLOCATOR.current_ref_raw().init(Cap::from_bits(23));
+    }
+
+    for i in 1..axconfig::plat::CPU_NUM {
+        let _ = sel4::init_thread::slot::CNODE
+            .cap()
+            .absolute_cptr_from_bits_with_depth((0x90 + i) as _, 64)
+            .copy(
+                &LeafSlot::new(0x90)
+                    .cap()
+                    .absolute_cptr_from_bits_with_depth((0x90 + i) as _, 64),
+                CapRights::all(),
+            );
     }
 }
 
@@ -51,12 +82,12 @@ impl IndexAllocator {
     }
 
     pub fn alloc(&mut self) -> Option<usize> {
-        if let Some(index) = self.recycled.pop() {
-            Some(index as usize)
-        } else if self.next < self.max {
+        if self.next < self.max {
             let index = self.next;
             self.next += 1;
             Some(index)
+        } else if let Some(index) = self.recycled.pop() {
+            Some(index as usize)
         } else {
             None
         }
@@ -73,6 +104,7 @@ pub struct CapSet {
     index_allocator: IndexAllocator,
     untyped: (Untyped, usize),
     caps: Vec<usize>,
+    created_cpu: usize,
 }
 
 impl CapSet {
@@ -82,29 +114,46 @@ impl CapSet {
         untyped_cap: Untyped,
         untyped_size: usize,
         start_index: usize,
+        created_cpu: usize,
     ) -> sel4::Result<Self> {
         // alloc cnode from untyped cap
-        let cnode_size = 1 << cap_type::CNode::object_blueprint(root_cnode_bits).physical_size_bits();
+        let cnode_size =
+            1 << cap_type::CNode::object_blueprint(root_cnode_bits).physical_size_bits();
         assert!(untyped_size >= cnode_size);
 
         // TODO: create global slot manager for each CPU core
         let cnode_slot = alloc_slot();
-        untyped_cap.untyped_retype(&cap_type::CNode::object_blueprint(root_cnode_bits), &cnode_slot.cnode_abs_cptr(), cnode_slot.offset_of_cnode(), 1)?;
+        untyped_cap
+            .untyped_retype(
+                &cap_type::CNode::object_blueprint(root_cnode_bits),
+                &cnode_slot.cnode_abs_cptr(),
+                cnode_slot.offset_of_cnode(),
+                1,
+            )
+            .unwrap();
         let untyped_size = untyped_size - cnode_size;
 
         let cnode = cnode_slot.cap();
 
-        cnode.absolute_cptr_from_bits_with_depth(2, root_cnode_bits).mint(
-            &LeafSlot::from_cap(cnode).abs_cptr(),
-            CapRights::all(),
-            CNodeCapData::skip_high_bits(root_cnode_bits).into_word() as _,
-        )?;
+        cnode
+            .absolute_cptr_from_bits_with_depth(2, root_cnode_bits)
+            .mint(
+                &LeafSlot::from_cap(cnode).abs_cptr(),
+                CapRights::all(),
+                CNodeCapData::skip_high_bits(root_cnode_bits).into_word() as _,
+            )?;
 
         // move cnode to parent cspace
+        let _ = sel4::init_thread::slot::CNODE
+            .cap()
+            .absolute_cptr_from_bits_with_depth(cnode_index as _, 64 - root_cnode_bits)
+            .delete();
+
         sel4::init_thread::slot::CNODE
             .cap()
             .absolute_cptr_from_bits_with_depth(cnode_index as _, 64 - root_cnode_bits)
-            .move_(&LeafSlot::from_cap(cnode).abs_cptr())?;
+            .move_(&LeafSlot::from_cap(cnode).abs_cptr())
+            .unwrap();
 
         let root_cnode = sel4::init_thread::slot::CNODE
             .cap()
@@ -118,6 +167,7 @@ impl CapSet {
             index_allocator: IndexAllocator::new(start_index, 1 << root_cnode_bits),
             untyped: (untyped_cap, untyped_size),
             caps: Vec::new(),
+            created_cpu,
         })
     }
 
@@ -129,43 +179,69 @@ impl CapSet {
         Ok(())
     }
 
-    pub fn alloc_fixed<T: CapTypeForObjectOfFixedSize>(&mut self, idx: Option<usize>) -> sel4::Result<LeafSlot> {
+    pub fn alloc_fixed<T: CapTypeForObjectOfFixedSize>(
+        &mut self,
+        idx: Option<usize>,
+    ) -> sel4::Result<LeafSlot> {
         let phys_size = 1 << T::object_blueprint().physical_size_bits();
         self.check_available(phys_size)?;
-        
+
         // Allocate a slot in the CNode
         let index = match idx {
             Some(i) => i,
-            None => self.index_allocator.alloc().ok_or(sel4::Error::NotEnoughMemory)?,
+            None => self
+                .index_allocator
+                .alloc()
+                .ok_or(sel4::Error::NotEnoughMemory)?,
         };
 
         // Allocate the object from the untyped capability
-        self.untyped.0.untyped_retype(&T::object_blueprint(), &self.root_cnode, index as _, 1)?;
+        self.untyped
+            .0
+            .untyped_retype(&T::object_blueprint(), &self.root_cnode, index as _, 1)
+            .unwrap();
         self.untyped.1 -= phys_size;
 
         self.caps.push(index);
 
-        let slot = LeafSlot::new(((self.root_cnode.path().bits() as usize) << self.root_cnode_bits) + index);
+        let slot = LeafSlot::new(
+            ((self.root_cnode.path().bits() as usize) << self.root_cnode_bits) + index,
+        );
         Ok(slot)
     }
 
-    pub fn alloc_variable<T: CapTypeForObjectOfVariableSize>(&mut self, idx: Option<usize>, size_bits: usize) -> sel4::Result<LeafSlot> {
+    pub fn alloc_variable<T: CapTypeForObjectOfVariableSize>(
+        &mut self,
+        idx: Option<usize>,
+        size_bits: usize,
+    ) -> sel4::Result<LeafSlot> {
         let phys_size = 1 << T::object_blueprint(size_bits).physical_size_bits();
         self.check_available(phys_size)?;
 
         // Allocate a slot in the CNode
         let index = match idx {
             Some(i) => i,
-            None => self.index_allocator.alloc().ok_or(sel4::Error::NotEnoughMemory)?,
+            None => self
+                .index_allocator
+                .alloc()
+                .ok_or(sel4::Error::NotEnoughMemory)
+                .unwrap(),
         };
 
         // Allocate the object from the untyped capability
-        self.untyped.0.untyped_retype(&T::object_blueprint(size_bits), &self.root_cnode, index as _, 1)?;
+        self.untyped.0.untyped_retype(
+            &T::object_blueprint(size_bits),
+            &self.root_cnode,
+            index as _,
+            1,
+        )?;
         self.untyped.1 -= phys_size;
 
         self.caps.push(index);
 
-        let slot = LeafSlot::new(((self.root_cnode.path().bits() as usize) << self.root_cnode_bits) + index);
+        let slot = LeafSlot::new(
+            ((self.root_cnode.path().bits() as usize) << self.root_cnode_bits) + index,
+        );
         Ok(slot)
     }
 
@@ -177,15 +253,24 @@ impl CapSet {
         Ok(self.alloc_fixed::<cap_type::PT>(idx)?.into())
     }
 
-    pub fn alloc_cnode(&mut self, idx: Option<usize>, size_bits: usize) -> sel4::Result<Cap<cap_type::CNode>> {
-        Ok(self.alloc_variable::<cap_type::CNode>(idx, size_bits)?.into())
+    pub fn alloc_cnode(
+        &mut self,
+        idx: Option<usize>,
+        size_bits: usize,
+    ) -> sel4::Result<Cap<cap_type::CNode>> {
+        Ok(self
+            .alloc_variable::<cap_type::CNode>(idx, size_bits)?
+            .into())
     }
 
     pub fn alloc_tcb(&mut self, idx: Option<usize>) -> sel4::Result<Cap<cap_type::Tcb>> {
         Ok(self.alloc_fixed::<cap_type::Tcb>(idx)?.into())
     }
 
-    pub fn alloc_notification(&mut self, idx: Option<usize>) -> sel4::Result<Cap<cap_type::Notification>> {
+    pub fn alloc_notification(
+        &mut self,
+        idx: Option<usize>,
+    ) -> sel4::Result<Cap<cap_type::Notification>> {
         Ok(self.alloc_fixed::<cap_type::Notification>(idx)?.into())
     }
 
@@ -197,31 +282,42 @@ impl CapSet {
         LeafSlot::new(((self.root_cnode.path().bits() as usize) << self.root_cnode_bits) + 2).cap()
     }
 
+    pub fn root_cnode_path(&self) -> AbsoluteCPtr {
+        self.root_cnode
+    }
+
     pub fn exit(&self) {
         // delete all allocated caps
         for idx in &self.caps {
-            let abs_path = self.root_cnode().absolute_cptr_from_bits_with_depth(*idx as _, 64);
+            let abs_path = self
+                .root_cnode()
+                .absolute_cptr_from_bits_with_depth(*idx as _, 64);
             abs_path.revoke().unwrap();
             abs_path.delete().unwrap();
         }
 
-        recycle_untyped_unit(self.untyped.0);
+        recycle_untyped_unit(self.untyped.0, self.created_cpu);
     }
 
     pub fn migrate(&mut self, root_cnode: AbsoluteCPtr) {
-        assert_eq!(self.root_cnode_bits, 64 - root_cnode.path().depth() as usize);
+        assert_eq!(
+            self.root_cnode_bits,
+            64 - root_cnode.path().depth() as usize
+        );
         self.root_cnode = root_cnode;
     }
 }
 
 pub const ALLOC_SIZE_BITS: usize = 19; // 512KB
 
-static RECYCLED_UNTYPED: SpinNoIrq<Vec<Untyped>> = SpinNoIrq::new(Vec::new());
+static RECYCLED_UNTYPED: [SpinNoIrq<Vec<Untyped>>; axconfig::plat::CPU_NUM] =
+    [const { SpinNoIrq::new(Vec::new()) }; axconfig::plat::CPU_NUM];
 
-pub fn alloc_untyped_unit() -> (Untyped, usize) {
-    let cap = match RECYCLED_UNTYPED.lock().pop() {
+pub fn alloc_untyped_unit(cpu_id: usize) -> (Untyped, usize) {
+    let cap = match RECYCLED_UNTYPED[cpu_id].lock().pop() {
         Some(cap) => cap,
         None => unsafe {
+            log::debug!("alloc untyped cap on cpu: {}", cpu_id);
             OBJ_ALLOCATOR
                 .current_ref_raw()
                 .alloc_untyped(ALLOC_SIZE_BITS)
@@ -230,6 +326,7 @@ pub fn alloc_untyped_unit() -> (Untyped, usize) {
     (cap, 1 << ALLOC_SIZE_BITS)
 }
 
-pub fn recycle_untyped_unit(cap: Untyped) {
-    RECYCLED_UNTYPED.lock().push(cap);
+pub fn recycle_untyped_unit(cap: Untyped, cpu_id: usize) {
+    log::debug!("alloc untyped cap on cpu: {}", cpu_id);
+    RECYCLED_UNTYPED[cpu_id].lock().push(cap);
 }

@@ -2,7 +2,24 @@ use crate::task::InitTask;
 use axplat::power::PowerIf;
 use common_macros::sel4_thread_entry;
 
+use axconfig::{TASK_STACK_SIZE, plat::CPU_NUM};
+use sel4_kit::slot_manager::LeafSlot;
+
 struct PowerImpl;
+
+#[unsafe(link_section = ".bss.stack")]
+static mut SECONDARY_BOOT_STACK: [[u8; TASK_STACK_SIZE]; CPU_NUM - 1] =
+    [[0; TASK_STACK_SIZE]; CPU_NUM - 1];
+
+#[cfg(feature = "smp")]
+pub(crate) fn init_secondary_task() {
+    for i in 1..CPU_NUM {
+        let stack_top = unsafe { SECONDARY_BOOT_STACK[i - 1].as_ptr_range().end as usize };
+
+        let entry = _start_secondary as usize;
+        let _ = InitTask::new(entry, stack_top, i).unwrap();
+    }
+}
 
 #[cfg(feature = "smp")]
 #[sel4_thread_entry]
@@ -18,11 +35,9 @@ impl PowerIf for PowerImpl {
     /// Where `cpu_id` is the logical CPU ID (0, 1, ..., N-1, N is the number of
     /// CPU cores on the platform).
     #[cfg(feature = "smp")]
-    fn cpu_boot(cpu_id: usize, stack: usize) {
+    fn cpu_boot(cpu_id: usize, _stack: usize) {
         // create a sel4 task and set affinity
-        let entry = _start_secondary as usize;
-        let task = InitTask::new(entry, stack, cpu_id).unwrap();
-        task.start().unwrap();
+        LeafSlot::new(0x80 + cpu_id).cap().tcb_resume().unwrap();
     }
 
     /// Shutdown the whole system.
