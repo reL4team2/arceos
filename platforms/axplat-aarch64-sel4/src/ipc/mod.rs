@@ -21,7 +21,7 @@ macro_rules! call_ep {
 pub fn create_task(tid: usize, entry: usize, kstack: usize, tls: usize, affinity: usize) -> usize {}
 
 #[generate_ipc_send(label = ServiceEvent::SwitchTask)]
-pub fn switch_task(task: usize) -> usize {}
+pub fn switch_task(prev_task: usize, next_task: usize) -> usize {}
 
 #[generate_ipc_send(label = ServiceEvent::ExitTask)]
 pub fn exit_task(task: usize) -> usize {}

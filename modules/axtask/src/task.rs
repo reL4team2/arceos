@@ -17,7 +17,10 @@ use crate::task_ext::AxTaskExt;
 use crate::{AxCpuMask, AxTask, AxTaskRef, WaitQueue};
 
 #[cfg(feature = "onsel4")]
-use axplat_aarch64_sel4::{create_task, exit_system, exit_task, task::NormalTask};
+use axplat_aarch64_sel4::{
+    create_task, exit_system, exit_task,
+    task::{create_sel4_task, start_sel4_task, suspend_sel4_task},
+};
 
 /// A unique identifier for a thread.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -82,7 +85,7 @@ pub struct TaskInner {
     tls: TlsArea,
 
     #[cfg(feature = "onsel4")]
-    sel4task: Option<Arc<NormalTask>>,
+    sel4task: Option<usize>,
 }
 
 impl TaskId {
@@ -120,7 +123,7 @@ impl TaskInner {
     where
         F: FnOnce() + Send + 'static,
     {
-        let mut t = Self::new_common(TaskId::new(), name, affinity);
+        let mut t = Self::new_common(TaskId::new(), name);
         debug!("new task: {}", t.id_name());
         let kstack = TaskStack::alloc(align_up_4k(stack_size));
 
@@ -133,17 +136,15 @@ impl TaskInner {
         t.ctx_mut().init(task_entry as usize, kstack.top(), tls);
 
         t.is_init = is_init;
-        let sel4_task = NormalTask::new(
+        let sel4_task = create_sel4_task(
             t.id().0 as _,
             task_entry as usize,
             kstack.top().into(),
-            100,
             tls.into(),
             affinity,
-            true,
-        )
-        .unwrap();
-        t.sel4task = Some(Arc::new(sel4_task));
+        );
+
+        t.sel4task = Some(sel4_task);
         t.kstack = Some(kstack);
 
         if t.name == "idle" {
@@ -158,7 +159,7 @@ impl TaskInner {
         F: FnOnce() + Send + 'static,
     {
         let cpu = axhal::percpu::this_cpu_id();
-        let mut t = Self::new_common(TaskId::new(), name, cpu);
+        let mut t = Self::new_common(TaskId::new(), name);
         debug!("new task: {}", t.id_name());
         let kstack = TaskStack::alloc(align_up_4k(stack_size));
 
@@ -171,8 +172,7 @@ impl TaskInner {
             tls.into(),
             cpu,
         );
-        let arc = unsafe { Arc::from_raw(sel4_task_ptr as *const NormalTask) };
-        t.sel4task = Some(arc);
+        t.sel4task = Some(sel4_task_ptr);
 
         t.kstack = Some(kstack);
         if t.name == "idle" {
@@ -274,7 +274,7 @@ impl TaskInner {
     #[inline]
     pub(crate) fn start(&self) {
         match &self.sel4task {
-            Some(t) => t.start().unwrap(),
+            Some(t) => start_sel4_task(*t),
             None => error!("sel4task not found"),
         }
     }
@@ -283,7 +283,7 @@ impl TaskInner {
     #[inline]
     pub(crate) fn suspend(&self) {
         match &self.sel4task {
-            Some(t) => t.suspend().unwrap(),
+            Some(t) => suspend_sel4_task(*t),
             None => error!("sel4task not found"),
         }
     }
@@ -291,13 +291,13 @@ impl TaskInner {
     #[cfg(feature = "onsel4")]
     #[inline]
     pub(crate) fn sel4_task(&self) -> usize {
-        Arc::into_raw(self.sel4task.clone().unwrap()) as usize
+        self.sel4task.expect("Can't find sel4task id")
     }
 }
 
 // private methods
 impl TaskInner {
-    fn new_common(id: TaskId, name: String, cpu: usize) -> Self {
+    fn new_common(id: TaskId, name: String) -> Self {
         Self {
             id,
             name,
@@ -563,9 +563,8 @@ impl Drop for TaskInner {
     fn drop(&mut self) {
         debug!("task drop: {}", self.id_name());
         #[cfg(feature = "onsel4")]
-        if let Some(arc) = self.sel4task.take() {
-            let raw = Arc::into_raw(arc) as usize;
-            exit_task(raw);
+        if let Some(t) = self.sel4task.take() {
+            exit_task(t);
 
             if self.name() == "main" {
                 exit_system();
@@ -680,6 +679,11 @@ use common_macros::sel4_thread_entry;
 #[sel4_thread_entry]
 extern "C" fn task_entry() -> ! {
     let task = crate::current();
+    log::debug!(
+        "start task {} on cpu {}",
+        task.id_name(),
+        axhal::percpu::this_cpu_id()
+    );
     #[cfg(feature = "smp")]
     unsafe {
         // Clear the prev task on CPU before running the task entry function.
