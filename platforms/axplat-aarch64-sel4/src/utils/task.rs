@@ -34,6 +34,17 @@ static TASK_CSPACE_ALLOCATOR: SpinNoIrq<IndexAllocator> =
 static TASK_MAP: SpinNoIrq<BTreeMap<usize, Arc<SpinNoIrq<NormalTask>>>> =
     SpinNoIrq::new(BTreeMap::new());
 
+#[thread_local]
+static mut INIT_TASK: bool = false;
+
+pub fn set_init_task(value: bool) {
+    unsafe { INIT_TASK = value }
+}
+
+pub fn init_task() -> bool {
+    unsafe { INIT_TASK }
+}
+
 /// Basic unit representing a task in seL4.
 pub struct NormalTask {
     pub entry: usize,
@@ -326,7 +337,7 @@ impl InitTask {
         let (virt, ipc_cap) = alloc_ipc_buffer(&obj_allocator).unwrap();
 
         // copy untyped into cnode
-        let untyped_raw = alloc_untyped_raw(22);
+        let untyped_raw = alloc_untyped_raw(24);
 
         cnode.absolute_cptr_from_bits_with_depth(23, 64).copy(
             &LeafSlot::from_cap(untyped_raw).abs_cptr(),
