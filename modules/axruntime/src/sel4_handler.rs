@@ -1,8 +1,8 @@
-use axplat_aarch64_sel4::ServiceEvent;
+use axplat_aarch64_sel4::ipc::ServiceEvent;
 #[cfg(feature = "irq")]
 use axplat_aarch64_sel4::irq::handle_irq;
 use axplat_aarch64_sel4::task::{
-    create_sel4_task, exit_sel4_task, migrate_sel4_task, switch_sel4_task,
+    create_sel4_task, exit_sel4_task, migrate_sel4_task, switch_sel4_task
 };
 use common::config::DEFAULT_SERVE_EP;
 use common::{read_types, reply_with};
@@ -11,28 +11,22 @@ use sel4::{Fault, with_ipc_buffer, with_ipc_buffer_mut};
 pub(crate) fn event_handler(cpu_id: usize) -> ! {
     with_ipc_buffer_mut(|ib| {
         loop {
-            debug!("Waiting for message on cpu {}...", cpu_id);
             let (msg, _badge) = DEFAULT_SERVE_EP.recv(());
-            #[cfg(feature = "irq")]
-            if msg.label() == 0 {
-                // handle interrupt
-                debug!("irq number is :{}", _badge);
-                handle_irq(_badge as _);
-                continue;
-            }
             let msg_label = match ServiceEvent::try_from(msg.label()) {
                 Ok(x) => x,
                 Err(_) => {
-                    if msg.label() >= 8 {
-                        if msg.label() == 0x204 {
-                            break;
-                        } else {
-                            error!("Unknown root messaage label: {:#x}", msg.label());
-                        }
+                    if msg.label() == 0x204 {
+                        break;
+                    } else if msg.label() >= 8 {
+                        error!("Unknown root messaage label: {}, badge {}", msg.label(), _badge);
+                        let fault = with_ipc_buffer(|buffer| Fault::new(buffer, &msg));
+                        error!("Received {} Fault: {:#x?}", _badge, fault);
+                        continue;    
+                    } else {
+                        #[cfg(feature = "irq")]
+                        handle_irq(_badge as _);
+                        continue;
                     }
-                    let fault = with_ipc_buffer(|buffer| Fault::new(buffer, &msg));
-                    error!("Received {} Fault: {:#x?}", _badge, fault);
-                    continue;
                 }
             };
             match msg_label {

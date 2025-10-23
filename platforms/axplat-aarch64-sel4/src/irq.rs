@@ -15,6 +15,7 @@ use crate::utils::obj::alloc_notification;
 
 const MAX_IRQ_COUNT: usize = 1024;
 
+#[percpu::def_percpu]
 static IRQ_HANDLER_TABLE: HandlerTable<MAX_IRQ_COUNT> = HandlerTable::new();
 
 #[percpu::def_percpu]
@@ -36,15 +37,15 @@ macro_rules! handle_trap {
     }}
 }
 
-pub(crate) fn init_early() {
+pub(crate) fn init_early(cpu_id: usize) {
     IRQ_CAPS.with_current(|irq_cap| {
-        irq_cap.init_once(SpinNoIrq::new(IrqCap::new()));
+        irq_cap.init_once(SpinNoIrq::new(IrqCap::new(cpu_id)));
     });
 }
 
-pub(crate) fn init_later() {
+pub(crate) fn init_later(cpu: usize) {
     IRQ_CAPS.with_current(|irq_cap| {
-        irq_cap.lock().init().unwrap();
+        irq_cap.lock().init(cpu).unwrap();
     });
 }
 
@@ -83,25 +84,24 @@ struct IrqCap {
     enable: bool,
     global_notify: Notification,
     irq_handlers: BTreeMap<usize, Sel4IrqHandler>,
-    notifications: BTreeMap<usize, Notification>,
+    cpu_id: usize,
 }
 
 impl IrqCap {
     /// Create a new instance of `IrqCap`.
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(cpu_id: usize) -> Self {
         let global_notify = Notification::from_bits(0);
         let irq_handlers = BTreeMap::new();
-        let notifications = BTreeMap::new();
         Self {
             enable: false,
             global_notify,
             irq_handlers,
-            notifications,
+            cpu_id,
         }
     }
 
     /// Initializes the IRQ capabilities and task.
-    pub(crate) fn init(&mut self) -> sel4::Result<()> {
+    pub(crate) fn init(&mut self, cpu: usize) -> sel4::Result<()> {
         // create a global notification for IRQs
         self.global_notify = alloc_notification();
         self.enable = true;
@@ -109,7 +109,7 @@ impl IrqCap {
         sel4::init_thread::slot::TCB
             .cap()
             .tcb_bind_notification(self.global_notify)?;
-
+        log::info!("init irq notification on cpu {}", cpu);
         Ok(())
     }
 
@@ -126,12 +126,13 @@ impl IrqCap {
     }
 
     /// Registers a seL4 IRQ and sets up the necessary capabilities and notifications.
-    pub fn register_sel4_irq(&mut self, idx: usize) -> sel4::Result<()> {
+    pub fn register_sel4_irq(&mut self, irq: usize) -> sel4::Result<()> {
         // create a notification for the IRQ
+        // TODO: now only support PPI IRQ, consider SPI IRQ
+        let idx = self.cpu_id * 32 + irq;
         let slot = alloc_slot();
-        LeafSlot::from_cap(self.global_notify).mint_to(slot, sel4::CapRights::all(), idx as _)?;
+        LeafSlot::from_cap(self.global_notify).mint_to(slot, sel4::CapRights::all(), irq as _)?;
         let notify = slot.cap();
-        self.notifications.insert(idx, notify);
 
         // create an IRQ handler
         let irq_handler = alloc_slot().cap();
@@ -140,13 +141,12 @@ impl IrqCap {
         // set up the IRQ handler
         irq_handler.irq_handler_set_notification(notify)?;
         irq_handler.irq_handler_ack()?;
-        self.irq_handlers.insert(idx, irq_handler);
+        self.irq_handlers.insert(irq, irq_handler);
 
         Ok(())
     }
 
     pub fn remove_sel4_irq(&mut self, idx: usize) {
-        self.notifications.remove(&idx);
         self.irq_handlers.remove(&idx);
     }
 
@@ -182,7 +182,7 @@ impl IrqIf for IrqIfImpl {
     /// It also enables the IRQ if the registration succeeds. It returns `false`
     /// if the registration failed.
     fn register(irq: usize, handler: IrqHandler) -> bool {
-        if IRQ_HANDLER_TABLE.register_handler(irq as _, handler) {
+        if unsafe { IRQ_HANDLER_TABLE.current_ref_mut_raw() }.register_handler(irq as _, handler) {
             IRQ_CAPS.with_current(|irq_cap| {
                 irq_cap.lock().register_sel4_irq(irq).unwrap();
             });
@@ -200,7 +200,7 @@ impl IrqIf for IrqIfImpl {
         IRQ_CAPS.with_current(|irq_cap| {
             irq_cap.lock().remove_sel4_irq(irq);
         });
-        IRQ_HANDLER_TABLE.unregister_handler(irq as _)
+        unsafe { IRQ_HANDLER_TABLE.current_ref_mut_raw() }.unregister_handler(irq as _)
     }
 
     /// Handles the IRQ.
@@ -209,7 +209,7 @@ impl IrqIf for IrqIfImpl {
     /// IRQ handler table and calls the corresponding handler. If necessary, it
     /// also acknowledges the interrupt controller after handling.
     fn handle(irq: usize) {
-        if !IRQ_HANDLER_TABLE.handle(irq as _) {
+        if !unsafe { IRQ_HANDLER_TABLE.current_ref_mut_raw() }.handle(irq as _) {
             log::warn!("Unhandled IRQ {}", irq);
         }
     }

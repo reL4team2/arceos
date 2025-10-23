@@ -67,7 +67,7 @@ pub fn rust_main_secondary(cpu_id: usize) -> ! {
     }
 
     #[cfg(feature = "irq")]
-    axhal::asm::enable_irqs();
+    super::init_interrupt();
 
     #[cfg(all(feature = "tls", not(feature = "multitask")))]
     super::init_tls();

@@ -35,12 +35,13 @@ impl InitIf for InitIfImpl {
         sel4_kit::ipc_buffer::init_ipc_buffer();
         common::slot::init(0x100..0x1000);
         common::slot::init_recv_slot();
+        crate::utils::task::set_init_task(true);
         crate::console::init_early(va!(UART_PADDR));
         crate::time::init_early();
         crate::utils::obj::init();
         crate::mem::init();
         #[cfg(feature = "irq")]
-        crate::irq::init_early();
+        crate::irq::init_early(_cpu_id);
     }
 
     /// Initializes the platform at the early stage for secondary cores.
@@ -49,6 +50,10 @@ impl InitIf for InitIfImpl {
     #[cfg(feature = "smp")]
     fn init_early_secondary(_cpu_id: usize) {
         crate::utils::obj::init_secondary();
+        crate::utils::task::set_init_task(true);
+
+        #[cfg(feature = "irq")]
+        crate::irq::init_early(_cpu_id);        
     }
 
     /// Initializes the platform at the later stage for the primary core.
@@ -77,7 +82,7 @@ impl InitIf for InitIfImpl {
     /// * Other essential peripherals are initialized.
     fn init_later(_cpu_id: usize, _arg: usize) {
         #[cfg(feature = "irq")]
-        crate::irq::init_later();
+        crate::irq::init_later(_cpu_id);
 
         #[cfg(feature = "smp")]
         crate::power::init_secondary_task();
@@ -87,5 +92,8 @@ impl InitIf for InitIfImpl {
     ///
     /// See [`init_later`] for details.
     #[cfg(feature = "smp")]
-    fn init_later_secondary(_cpu_id: usize) {}
+    fn init_later_secondary(_cpu_id: usize) {
+        #[cfg(feature = "irq")]
+        crate::irq::init_later(_cpu_id);
+    }
 }
