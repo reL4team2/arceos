@@ -15,14 +15,8 @@ mod mem;
 mod power;
 mod time;
 
-pub mod utils;
-pub use utils::task;
-
-pub mod ipc;
-pub use ipc::create_task;
-pub use ipc::switch_task;
-pub use ipc::exit_task;
-pub use ipc::exit_system;
+mod obj;
+mod task;
 
 pub mod asm;
 
@@ -44,13 +38,4 @@ pub mod config {
 #[unsafe(no_mangle)]
 unsafe extern "C" fn _start() -> ! {
     axplat::call_main(0, 0);
-}
-
-pub fn migrate_task(task: usize, cpu_id: usize) -> usize {
-    if crate::utils::task::init_task() {
-        crate::utils::task::migrate_sel4_task(task, cpu_id);
-        return 0
-    } else {
-        crate::ipc::migrate_task(task, cpu_id)
-    }
 }

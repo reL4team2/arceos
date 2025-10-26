@@ -17,7 +17,7 @@ use crate::wait_queue::WaitQueueGuard;
 use crate::{AxCpuMask, AxTaskRef, Scheduler, TaskInner, WaitQueue};
 
 #[cfg(feature = "onsel4")]
-use axplat_aarch64_sel4::{migrate_task, switch_task};
+use crate::sel4::*;
 
 macro_rules! percpu_static {
     ($(
@@ -178,7 +178,7 @@ pub(crate) fn select_run_queue<G: BaseGuard>(task: &AxTaskRef) -> AxRunQueueRef<
         #[cfg(feature = "onsel4")]
         {
             let sel4_task = task.sel4_task();
-            migrate_task(sel4_task, index);
+            sel4_migrate_task(sel4_task, index);
         }
 
         AxRunQueueRef {
@@ -580,7 +580,7 @@ impl AxRunQueue {
                 let prev_task_id: usize = prev_task.sel4_task() as _;
                 let next_task_id: usize = next_task.sel4_task() as _;
                 unsafe { CurrentTask::set_current(prev_task, next_task) };
-                switch_task(prev_task_id, next_task_id);
+                sel4_switch_task(prev_task_id, next_task_id);
             } else {
                 let prev_ctx_ptr = prev_task.ctx_mut_ptr();
                 let next_ctx_ptr = next_task.ctx_mut_ptr();

@@ -17,10 +17,7 @@ use crate::task_ext::AxTaskExt;
 use crate::{AxCpuMask, AxTask, AxTaskRef, WaitQueue};
 
 #[cfg(feature = "onsel4")]
-use axplat_aarch64_sel4::{
-    create_task, exit_system, exit_task,
-    task::{create_sel4_task, start_sel4_task, suspend_sel4_task},
-};
+use crate::sel4::*;
 
 /// A unique identifier for a thread.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -136,7 +133,7 @@ impl TaskInner {
         t.ctx_mut().init(task_entry as usize, kstack.top(), tls);
 
         t.is_init = is_init;
-        let sel4_task = create_sel4_task(
+        let sel4_task = sel4_create_task(
             t.id().0 as _,
             task_entry as usize,
             kstack.top().into(),
@@ -165,7 +162,7 @@ impl TaskInner {
 
         t.entry = Some(Box::into_raw(Box::new(entry)));
         let tls = VirtAddr::from(t.tls.tls_ptr() as usize);
-        let sel4_task_ptr = create_task(
+        let sel4_task_ptr = sel4_create_task(
             t.id().0 as _,
             task_entry as _,
             kstack.top().into(),
@@ -274,7 +271,7 @@ impl TaskInner {
     #[inline]
     pub(crate) fn start(&self) {
         match &self.sel4task {
-            Some(t) => start_sel4_task(*t),
+            Some(t) => sel4_start_task(*t),
             None => error!("sel4task not found"),
         }
     }
@@ -283,7 +280,7 @@ impl TaskInner {
     #[inline]
     pub(crate) fn suspend(&self) {
         match &self.sel4task {
-            Some(t) => suspend_sel4_task(*t),
+            Some(t) => sel4_stop_task(*t),
             None => error!("sel4task not found"),
         }
     }
@@ -564,10 +561,10 @@ impl Drop for TaskInner {
         debug!("task drop: {}", self.id_name());
         #[cfg(feature = "onsel4")]
         if let Some(t) = self.sel4task.take() {
-            exit_task(t);
+            sel4_exit_task(t);
 
             if self.name() == "main" {
-                exit_system();
+                sel4_exit_system();
             }
         }
     }

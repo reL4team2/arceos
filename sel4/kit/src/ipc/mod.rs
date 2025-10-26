@@ -13,7 +13,7 @@ pub enum ServiceEvent {
 
 macro_rules! call_ep {
     ($msg:expr) => {
-        common::config::DEFAULT_PARENT_EP.call($msg)
+        crate::config::DEFAULT_PARENT_EP.call($msg)
     };
 }
 

@@ -35,7 +35,7 @@ sched-cfs = ["multitask", "preempt"]
 
 test = ["percpu?/sp-naive"]
 
-onsel4 = ["axplat-aarch64-sel4", "common-macros", "sel4"]
+onsel4 = ["axplat", "common-macros", "sel4", "kit"]
 
 [dependencies]
 cfg-if = "1.0"
@@ -51,9 +51,10 @@ kernel_guard = { version = "0.1", optional = true }
 crate_interface = { version = "0.1", optional = true }
 cpumask = { version = "0.1", optional = true }
 axsched = { version = "0.3", optional = true }
-axplat-aarch64-sel4 = { workspace = true, optional = true }
+axplat = { version = "0.2", feature = ["onsel4"], optional = true }
 common-macros = { workspace = true, optional = true }
 sel4 = { workspace = true, optional = true }
+kit = { workspace = true, optional = true }
 
 [dev-dependencies]
 rand = "0.9"
