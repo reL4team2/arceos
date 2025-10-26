@@ -18,9 +18,12 @@ use sel4_kit::slot_manager::LeafSlot;
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use kspin::SpinNoIrq;
+use memory_addr::VirtAddr;
 
-use super::obj::{ALLOC_SIZE_BITS, CapSet, IndexAllocator, alloc_untyped_raw, alloc_untyped_unit};
+use kit::obj::{CapSet, allocator::IndexAllocator};
+
 use crate::mem::{alloc_ipc_buffer, alloc_ipc_buffer_by_capset, dealloc_ipc_buffer};
+use crate::obj::{alloc_untyped, alloc_untyped_raw, recycle_untyped};
 
 unsafe extern "C" {
     fn _stdata();
@@ -41,7 +44,7 @@ pub fn set_init_task(value: bool) {
     unsafe { INIT_TASK = value }
 }
 
-pub fn init_task() -> bool {
+fn init_task() -> bool {
     unsafe { INIT_TASK }
 }
 
@@ -51,11 +54,12 @@ pub struct NormalTask {
     pub stack: usize,
     pub capset: CapSet,
     pub untyped: cap::Untyped,
-    pub ipc_buffer_addr: usize,
+    pub ipc_buffer_addr: VirtAddr,
     pub tid: usize,
     pub affinity: usize,
     pub cnode_index: usize,
     pub migrate: bool,
+    pub created_cpu: usize,
 }
 
 impl NormalTask {
@@ -71,21 +75,13 @@ impl NormalTask {
         cpu_id: usize,
     ) -> sel4::Result<Self> {
         // allocate untyped for task
-        let (untyped, _) = alloc_untyped_unit(cpu_id);
+        let untyped = alloc_untyped(cpu_id);
         let cnode_index = TASK_CSPACE_ALLOCATOR
             .lock()
             .alloc()
             .expect("no more cnode index");
 
-        let mut capset = CapSet::new(
-            cnode_index,
-            CNODE_RADIX_BITS,
-            untyped,
-            1 << ALLOC_SIZE_BITS,
-            0x100,
-            cpu_id,
-        )
-        .unwrap();
+        let mut capset = CapSet::new(cnode_index, CNODE_RADIX_BITS, untyped, 0x100).unwrap();
 
         // create a new tcb
         let tcb = capset.alloc_tcb(Some(1))?;
@@ -130,7 +126,7 @@ impl NormalTask {
             capset.root_cnode(),
             CNodeCapData::skip_high_bits(CNODE_RADIX_BITS),
             init_thread::slot::VSPACE.cap(),
-            virt as _,
+            virt.as_usize() as _,
             ipc_cap,
         )
         .unwrap();
@@ -150,7 +146,7 @@ impl NormalTask {
         let mut regs = tcb.tcb_read_all_registers(true)?;
         *regs.pc_mut() = entry as _;
         *regs.sp_mut() = sp as _;
-        *regs.gpr_mut(8) = virt as _;
+        *regs.gpr_mut(8) = virt.as_usize() as _;
         *regs.gpr_mut(0) = cpu_id as _;
         *regs.gpr_mut(28) = percpu::percpu_area_base(cpu_id) as _;
 
@@ -168,6 +164,7 @@ impl NormalTask {
             affinity: cpu_id,
             cnode_index,
             migrate: false,
+            created_cpu: cpu_id,
         };
 
         Ok(task)
@@ -229,7 +226,7 @@ impl NormalTask {
     }
 
     pub fn exit(&self) {
-        self.capset.exit();
+        self.capset.drop().unwrap();
 
         dealloc_ipc_buffer(self.ipc_buffer_addr);
 
@@ -245,6 +242,7 @@ impl NormalTask {
                 .delete();
         }
 
+        recycle_untyped(self.untyped, self.created_cpu);
         TASK_CSPACE_ALLOCATOR.lock().recycle(self.cnode_index);
     }
 }
@@ -334,7 +332,7 @@ impl InitTask {
             .absolute_cptr(DEFAULT_SERVE_EP.cptr())
             .copy(&LeafSlot::from_cap(ep).abs_cptr(), CapRights::all())?;
 
-        let (virt, ipc_cap) = alloc_ipc_buffer(&obj_allocator).unwrap();
+        let (virt, ipc_cap) = alloc_ipc_buffer().unwrap();
 
         // copy untyped into cnode
         let untyped_raw = alloc_untyped_raw(24);
@@ -355,7 +353,7 @@ impl InitTask {
             cnode,
             CNodeCapData::skip_high_bits(2 * CNODE_RADIX_BITS),
             init_thread::slot::VSPACE.cap(),
-            virt as _,
+            virt.as_usize() as _,
             ipc_cap,
         )?;
 
@@ -368,7 +366,7 @@ impl InitTask {
         let mut regs = tcb.tcb_read_all_registers(true)?;
         *regs.pc_mut() = entry as _;
         *regs.sp_mut() = sp as _;
-        *regs.gpr_mut(8) = virt as _;
+        *regs.gpr_mut(8) = virt.as_usize() as _;
         *regs.gpr_mut(0) = affinity as _;
 
         tcb.tcb_write_all_registers(false, &mut regs)?;
@@ -429,5 +427,41 @@ pub fn switch_sel4_task(prev_tid: usize, next_tid: usize) {
 
     if let Some(t) = TASK_MAP.lock().get(&next_tid) {
         t.lock().start().unwrap();
+    }
+}
+
+use axplat::sel4::Sel4TaskIf;
+
+struct Sel4TaskIfImpl;
+
+#[impl_plat_interface]
+impl Sel4TaskIf for Sel4TaskIfImpl {
+    fn create_task(tid: usize, entry: usize, stack: usize, tls: usize, affinity: usize) -> usize {
+        create_sel4_task(tid, entry, stack, tls, affinity)
+    }
+
+    fn switch_task(prev_task: usize, next_task: usize) -> usize {
+        switch_sel4_task(prev_task, next_task);
+        prev_task
+    }
+
+    fn destroy_task(task: usize) {
+        exit_sel4_task(task);
+    }
+
+    fn migrate_task(task: usize, cpu_id: usize) {
+        migrate_sel4_task(task, cpu_id);
+    }
+
+    fn start_task(task: usize) {
+        start_sel4_task(task);
+    }
+
+    fn stop_task(task: usize) {
+        suspend_sel4_task(task);
+    }
+
+    fn is_init_task() -> bool {
+        init_task()
     }
 }

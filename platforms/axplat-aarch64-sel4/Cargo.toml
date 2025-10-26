@@ -13,7 +13,7 @@ smp = ["axplat/smp", "kspin/smp"]
 
 [dependencies]
 axconfig-macros = "0.2"
-axplat = "0.2"
+axplat = { version = "0.2", features = ["onsel4"] }
 kspin = "0.1"
 arm_pl011 = "0.1"
 aarch64-cpu = "10.0"
@@ -33,3 +33,4 @@ common = { workspace = true, features = ["alloc"] }
 common-macros = { workspace = true }
 sel4 = { workspace = true }
 axconfig = { workspace = true }
+kit = { workspace = true }

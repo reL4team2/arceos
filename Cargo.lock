@@ -670,7 +670,7 @@ version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c86cdb48cf1fbd432f4326ab0852b696ac49442b0ea0aed3401cb0bbe370a19f"
 dependencies = [
- "axplat-macros",
+ "axplat-macros 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "bitflags 2.9.2",
  "const-str",
  "crate_interface",
@@ -682,10 +682,9 @@ dependencies = [
 [[package]]
 name = "axplat"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4de04c54b63bf2ca1ff202733d2516da49d7779649cdb2f9c4ecf22909e6810"
+source = "git+https://github.com/reL4team2/axplat_crates.git?rev=e7ff0ab#e7ff0ab7231a02a4c76be41d618369ca50ced1c4"
 dependencies = [
- "axplat-macros",
+ "axplat-macros 0.1.0 (git+https://github.com/reL4team2/axplat_crates.git?rev=e7ff0ab)",
  "bitflags 2.9.2",
  "const-str",
  "crate_interface",
@@ -819,6 +818,7 @@ dependencies = [
  "common",
  "common-macros",
  "int_ratio",
+ "kit",
  "kspin",
  "lazyinit",
  "log",
@@ -872,6 +872,16 @@ name = "axplat-macros"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f90dfaee06a112fe4f810c60af1a86bc080af2172185b491cacc307b84dff748"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.106",
+]
+
+[[package]]
+name = "axplat-macros"
+version = "0.1.0"
+source = "git+https://github.com/reL4team2/axplat_crates.git?rev=e7ff0ab#e7ff0ab7231a02a4c76be41d618369ca50ced1c4"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -977,6 +987,7 @@ dependencies = [
  "common",
  "crate_interface",
  "ctor_bare",
+ "kit",
  "percpu",
  "sel4",
 ]
@@ -1019,7 +1030,7 @@ version = "0.2.0"
 dependencies = [
  "axconfig",
  "axhal",
- "axplat-aarch64-sel4",
+ "axplat 0.2.0",
  "axsched",
  "axtask",
  "cfg-if",
@@ -1027,6 +1038,7 @@ dependencies = [
  "cpumask",
  "crate_interface",
  "kernel_guard",
+ "kit",
  "kspin",
  "lazyinit",
  "log",
@@ -1757,6 +1769,21 @@ source = "git+https://github.com/croakexciting/kernel_guard.git?rev=f0c503d#f0c5
 dependencies = [
  "cfg-if",
  "crate_interface",
+]
+
+[[package]]
+name = "kit"
+version = "0.2.0"
+dependencies = [
+ "common",
+ "common-macros",
+ "kspin",
+ "log",
+ "memory_addr",
+ "num_enum",
+ "sel4",
+ "sel4-kit",
+ "zerocopy 0.8.26",
 ]
 
 [[package]]
