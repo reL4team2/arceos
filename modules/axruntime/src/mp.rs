@@ -83,5 +83,5 @@ pub fn rust_main_secondary(cpu_id: usize) -> ! {
     }
 
     #[cfg(feature = "onsel4")]
-    crate::sel4_handler::event_handler(cpu_id)
+    axplat::sel4::handler(cpu_id)
 }

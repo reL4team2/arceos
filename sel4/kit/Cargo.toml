@@ -10,12 +10,16 @@ repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[features]
+irq = []
+
 [dependencies]
 kspin = "0.1"
 memory_addr = "0.4"
 log = "0.4"
 num_enum = { version = "0.7.3", default-features = false }
 zerocopy = { version = "0.8.20", default-features = false }
+linkme = "0.3"
 
 sel4-kit = { workspace = true, features = ["alloc"] }
 common = { workspace = true, features = ["alloc"] }

@@ -125,10 +125,6 @@ impl IrqIf for IrqIfImpl {
     /// IRQ handler table and calls the corresponding handler. If necessary, it
     /// also acknowledges the interrupt controller after handling.
     fn handle(irq: usize) {
-        // IRQ_CAPS.with_current(|irq_cap| {
-        //     irq_cap.lock().ack_irq(irq as _);
-        // });
-
         if !unsafe { IRQ_HANDLER_TABLE.current_ref_mut_raw() }.handle(irq as _) {
             log::warn!("Unhandled IRQ {}", irq);
         }
@@ -136,4 +132,21 @@ impl IrqIf for IrqIfImpl {
 
     /// Sends an inter-processor interrupt (IPI) to the specified target CPU or all CPUs.
     fn send_ipi(_irq_num: usize, _target: IpiTarget) {}
+}
+
+use axplat::sel4::Sel4IrqIf;
+
+#[impl_plat_interface]
+impl Sel4IrqIf for IrqIfImpl {
+    fn disable_irqs() {
+        disable_irqs();
+    }
+
+    fn enable_irqs() {
+        enable_irqs();
+    }
+
+    fn irqs_enabled() -> bool {
+        irqs_enabled()
+    }
 }

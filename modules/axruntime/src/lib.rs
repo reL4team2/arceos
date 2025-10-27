@@ -31,9 +31,6 @@ mod mp;
 #[cfg(feature = "smp")]
 pub use self::mp::rust_main_secondary;
 
-#[cfg(feature = "onsel4")]
-mod sel4_handler;
-
 const LOGO: &str = r#"
        d8888                            .d88888b.   .d8888b.
       d88888                           d88P" "Y88b d88P  Y88b
@@ -210,7 +207,7 @@ pub fn rust_main(cpu_id: usize, arg: usize) -> ! {
     }
 
     #[cfg(feature = "onsel4")]
-    sel4_handler::event_handler(cpu_id);
+    axplat::sel4::handler(cpu_id);
 
     #[cfg(not(feature = "onsel4"))]
     {

@@ -8,7 +8,7 @@ homepage.workspace = true
 repository.workspace = true
 
 [features]
-irq = ["axplat/irq"]
+irq = ["axplat/irq", "kit/irq"]
 smp = ["axplat/smp", "kspin/smp"]
 
 [dependencies]

@@ -90,7 +90,7 @@ kernel_guard = { git = "https://github.com/croakexciting/kernel_guard.git", rev 
 axcpu = { git = "https://github.com/croakexciting/axcpu.git", rev = "d40cb74" }
 percpu = { git = "https://github.com/croakexciting/percpu.git", rev = "8d83e54" }
 percpu_macros = { git = "https://github.com/croakexciting/percpu.git", rev = "8d83e54" }
-axplat = { git = "https://github.com/reL4team2/axplat_crates.git", rev = "e7ff0ab" }
+axplat = { git = "https://github.com/reL4team2/axplat_crates.git", rev = "41b1c45" }
 
 [patch."https://github.com/seL4/rust-sel4"]
 sel4 = { git = "https://github.com/yfblock/rust-sel4", rev = "1280281" }
