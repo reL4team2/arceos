@@ -42,6 +42,7 @@ extern crate memory_addr;
 cfg_if::cfg_if! {
     if #[cfg(feature = "myplat")] {
         // link the custom platform crate in your application.
+        extern crate axplat_aarch64_sel4;
     } else if #[cfg(target_os = "none")] {
         #[cfg(target_arch = "x86_64")]
         extern crate axplat_x86_pc;
@@ -109,7 +110,24 @@ pub use axplat::init::init_later;
 pub use axcpu::asm;
 
 #[cfg(feature = "onsel4")]
-pub use axplat_aarch64_sel4::asm;
+pub mod asm {
+    pub use kit::asm::*;
+
+    #[cfg(feature = "irq")]
+    pub fn disable_irqs() {
+        axplat::sel4::disable_irqs()
+    }
+
+    #[cfg(feature = "irq")]
+    pub fn enable_irqs() {
+        axplat::sel4::enable_irqs()
+    }
+
+    #[cfg(feature = "irq")]
+    pub fn irqs_enabled() -> bool {
+        axplat::sel4::irqs_enabled()
+    }
+}
 
 #[cfg(feature = "smp")]
 pub use axplat::init::{init_early_secondary, init_later_secondary};

@@ -1,5 +1,4 @@
 #![no_std]
-#![feature(thread_local)]
 
 #[macro_use]
 extern crate axplat;
@@ -15,10 +14,11 @@ mod mem;
 mod power;
 mod time;
 
+mod handler;
 mod obj;
 mod task;
 
-pub mod asm;
+// pub mod asm;
 
 pub mod config {
     //! Platform configuration module.

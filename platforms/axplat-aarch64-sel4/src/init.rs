@@ -35,7 +35,7 @@ impl InitIf for InitIfImpl {
         sel4_kit::ipc_buffer::init_ipc_buffer();
         common::slot::init(0x100..0x1000);
         common::slot::init_recv_slot();
-        crate::task::set_init_task(true);
+        crate::task::set_init_task();
         crate::console::init_early(va!(UART_PADDR));
         crate::time::init_early();
         crate::obj::init();
@@ -50,7 +50,7 @@ impl InitIf for InitIfImpl {
     #[cfg(feature = "smp")]
     fn init_early_secondary(_cpu_id: usize) {
         crate::obj::init_secondary();
-        crate::task::set_init_task(true);
+        crate::task::set_init_task();
 
         #[cfg(feature = "irq")]
         crate::irq::init_early(_cpu_id);

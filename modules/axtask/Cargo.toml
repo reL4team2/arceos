@@ -24,7 +24,7 @@ multitask = [
     "dep:crate_interface",
     "dep:cpumask",
 ]
-irq = []
+irq = ["kit?/irq"]
 tls = ["axhal/tls"]
 preempt = ["irq", "percpu?/preempt", "kernel_guard/preempt"]
 smp = ["kspin/smp"]

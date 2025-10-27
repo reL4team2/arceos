@@ -10,6 +10,9 @@ use sel4_kit::slot_manager::LeafSlot;
 
 use crate::config::*;
 
+#[linkme::distributed_slice]
+pub static SEL4_IRQ: [fn(usize) -> bool];
+
 pub struct IrqCap<'a> {
     enable: bool,
     global_notify: Notification,

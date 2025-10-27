@@ -570,6 +570,7 @@ dependencies = [
  "cfg-if",
  "heapless 0.8.0",
  "kernel_guard",
+ "kit",
  "lazyinit",
  "linkme",
  "log",
@@ -682,9 +683,9 @@ dependencies = [
 [[package]]
 name = "axplat"
 version = "0.2.0"
-source = "git+https://github.com/reL4team2/axplat_crates.git?rev=e7ff0ab#e7ff0ab7231a02a4c76be41d618369ca50ced1c4"
+source = "git+https://github.com/reL4team2/axplat_crates.git?rev=41b1c45#41b1c45357859619322ee23ccafb4aeeceab65e3"
 dependencies = [
- "axplat-macros 0.1.0 (git+https://github.com/reL4team2/axplat_crates.git?rev=e7ff0ab)",
+ "axplat-macros 0.1.0 (git+https://github.com/reL4team2/axplat_crates.git?rev=41b1c45)",
  "bitflags 2.9.2",
  "const-str",
  "crate_interface",
@@ -881,7 +882,7 @@ dependencies = [
 [[package]]
 name = "axplat-macros"
 version = "0.1.0"
-source = "git+https://github.com/reL4team2/axplat_crates.git?rev=e7ff0ab#e7ff0ab7231a02a4c76be41d618369ca50ced1c4"
+source = "git+https://github.com/reL4team2/axplat_crates.git?rev=41b1c45#41b1c45357859619322ee23ccafb4aeeceab65e3"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -981,7 +982,6 @@ dependencies = [
  "axmm",
  "axnet",
  "axplat 0.2.0",
- "axplat-aarch64-sel4",
  "axtask",
  "chrono",
  "common",
@@ -1778,6 +1778,7 @@ dependencies = [
  "common",
  "common-macros",
  "kspin",
+ "linkme",
  "log",
  "memory_addr",
  "num_enum",

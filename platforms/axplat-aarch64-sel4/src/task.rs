@@ -12,6 +12,8 @@ use sel4::{
     CNodeCapData, CapRights,
     cap::{self},
     init_thread,
+    with_ipc_buffer,
+    with_ipc_buffer_mut,
 };
 use sel4_kit::slot_manager::LeafSlot;
 
@@ -37,21 +39,20 @@ static TASK_CSPACE_ALLOCATOR: SpinNoIrq<IndexAllocator> =
 static TASK_MAP: SpinNoIrq<BTreeMap<usize, Arc<SpinNoIrq<NormalTask>>>> =
     SpinNoIrq::new(BTreeMap::new());
 
-#[thread_local]
-static mut INIT_TASK: bool = false;
-
-pub fn set_init_task(value: bool) {
-    unsafe { INIT_TASK = value }
+pub fn set_init_task() {
+    with_ipc_buffer_mut(|ib| {
+        ib.set_user_data(0x1 as _)
+    })
 }
 
 fn init_task() -> bool {
-    unsafe { INIT_TASK }
+    with_ipc_buffer(|ib| {
+        ib.user_data() == 0x1
+    })
 }
 
 /// Basic unit representing a task in seL4.
 pub struct NormalTask {
-    pub entry: usize,
-    pub stack: usize,
     pub capset: CapSet,
     pub untyped: cap::Untyped,
     pub ipc_buffer_addr: VirtAddr,
@@ -155,8 +156,6 @@ impl NormalTask {
         tcb.tcb_set_affinity(cpu_id as _)?;
 
         let task = Self {
-            entry,
-            stack: sp,
             capset,
             untyped,
             ipc_buffer_addr: virt,
