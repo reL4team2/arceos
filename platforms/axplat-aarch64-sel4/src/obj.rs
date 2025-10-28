@@ -8,7 +8,7 @@ use kit::obj::allocator::UntypedAllocator;
 use lazyinit::LazyInit;
 
 static UNTYPED_ALLOCATOR: LazyInit<SpinNoIrq<UntypedAllocator>> = LazyInit::new();
-pub const ALLOC_SIZE_BITS: usize = 19; // 512KB
+pub const ALLOC_SIZE_BITS: usize = 18; // 256KB
 
 #[percpu::def_percpu]
 pub(crate) static OBJ_ALLOCATOR: ObjectAllocator = ObjectAllocator::empty();

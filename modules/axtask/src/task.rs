@@ -115,8 +115,7 @@ unsafe impl Sync for TaskInner {}
 
 impl TaskInner {
     /// Create a new task with the given entry function and stack size.
-    #[cfg(feature = "onsel4")]
-    pub fn new<F>(entry: F, name: String, stack_size: usize, affinity: usize, is_init: bool) -> Self
+    pub fn new<F>(entry: F, name: String, stack_size: usize) -> Self
     where
         F: FnOnce() + Send + 'static,
     {
@@ -132,46 +131,19 @@ impl TaskInner {
         t.entry = Some(Box::into_raw(Box::new(entry)));
         t.ctx_mut().init(task_entry as usize, kstack.top(), tls);
 
-        t.is_init = is_init;
-        let sel4_task = sel4_create_task(
-            t.id().0 as _,
-            task_entry as usize,
-            kstack.top().into(),
-            tls.into(),
-            affinity,
-        );
-
-        t.sel4task = Some(sel4_task);
-        t.kstack = Some(kstack);
-
-        if t.name == "idle" {
-            t.is_idle = true;
+        #[cfg(feature = "onsel4")]
+        {
+            let sel4_task = sel4_create_task(
+                t.id().0 as _,
+                task_entry as usize,
+                kstack.top().into(),
+                tls.into(),
+                axhal::percpu::this_cpu_id(),
+            );
+            t.sel4task = Some(sel4_task);
         }
-        t
-    }
-
-    #[cfg(feature = "onsel4")]
-    pub fn new_with_ipc<F>(entry: F, name: String, stack_size: usize) -> Self
-    where
-        F: FnOnce() + Send + 'static,
-    {
-        let cpu = axhal::percpu::this_cpu_id();
-        let mut t = Self::new_common(TaskId::new(), name);
-        debug!("new task: {}", t.id_name());
-        let kstack = TaskStack::alloc(align_up_4k(stack_size));
-
-        t.entry = Some(Box::into_raw(Box::new(entry)));
-        let tls = VirtAddr::from(t.tls.tls_ptr() as usize);
-        let sel4_task_ptr = sel4_create_task(
-            t.id().0 as _,
-            task_entry as _,
-            kstack.top().into(),
-            tls.into(),
-            cpu,
-        );
-        t.sel4task = Some(sel4_task_ptr);
-
         t.kstack = Some(kstack);
+
         if t.name == "idle" {
             t.is_idle = true;
         }
@@ -278,6 +250,13 @@ impl TaskInner {
 
     #[cfg(feature = "onsel4")]
     #[inline]
+    pub(crate) fn set_is_init(&mut self, is_init: bool) {
+        self.is_init = is_init;
+    }
+
+    #[cfg(feature = "onsel4")]
+    #[allow(unused)]
+    #[inline]
     pub(crate) fn suspend(&self) {
         match &self.sel4task {
             Some(t) => sel4_stop_task(*t),
@@ -326,40 +305,6 @@ impl TaskInner {
             sel4task: None,
         }
     }
-
-    // #[cfg(feature = "onsel4")]
-    // fn new_common(id: TaskId, name: String, cpu: usize) -> Self {
-    //     Self {
-    //         id,
-    //         name,
-    //         is_idle: false,
-    //         is_init: false,
-    //         entry: None,
-    //         state: AtomicU8::new(TaskState::Ready as u8),
-    //         // By default, the task is allowed to run on all CPUs.
-    //         cpumask: SpinNoIrq::new(AxCpuMask::one_shot(cpu)),
-    //         in_wait_queue: AtomicBool::new(false),
-    //         #[cfg(feature = "irq")]
-    //         timer_ticket_id: AtomicU64::new(0),
-    //         cpu_id: AtomicU32::new(0),
-    //         #[cfg(feature = "smp")]
-    //         on_cpu: AtomicBool::new(false),
-    //         #[cfg(feature = "preempt")]
-    //         need_resched: AtomicBool::new(false),
-    //         #[cfg(feature = "preempt")]
-    //         preempt_disable_count: AtomicUsize::new(0),
-    //         exit_code: AtomicI32::new(0),
-    //         wait_for_exit: WaitQueue::new(),
-    //         kstack: None,
-    //         ctx: UnsafeCell::new(TaskContext::new()),
-    //         task_ext: AxTaskExt::empty(),
-    //         #[cfg(feature = "tls")]
-    //         tls: TlsArea::alloc(),
-    //         // seL4 thread
-    //         #[cfg(feature = "onsel4")]
-    //         sel4task: None,
-    //     }
-    // }
 
     /// Creates an "init task" using the current CPU states, to use as the
     /// current task.
@@ -633,19 +578,10 @@ impl CurrentTask {
         Arc::ptr_eq(&self.0, other)
     }
 
-    #[cfg(not(feature = "onsel4"))]
     pub(crate) unsafe fn init_current(init_task: AxTaskRef) {
         assert!(init_task.is_init());
-        #[cfg(feature = "tls")]
+        #[cfg(all(feature = "tls", not(feature = "onsel4")))]
         axhal::asm::write_thread_pointer(init_task.tls.tls_ptr() as usize);
-        let ptr = Arc::into_raw(init_task);
-        unsafe {
-            axhal::percpu::set_current_task_ptr(ptr);
-        }
-    }
-
-    #[cfg(feature = "onsel4")]
-    pub(crate) unsafe fn init_set_current(init_task: AxTaskRef) {
         let ptr = Arc::into_raw(init_task);
         unsafe {
             axhal::percpu::set_current_task_ptr(ptr);

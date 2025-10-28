@@ -86,17 +86,6 @@ pub fn init_scheduler_secondary() {
     crate::timers::init();
 }
 
-#[cfg(feature = "onsel4")]
-pub fn switch_sel4_task(next_ptr: usize) {
-    let task = unsafe { Arc::from_raw(next_ptr as *const AxTask) };
-    log::info!("switch to sel4 task {}", task.id_name());
-    unsafe {
-        current().suspend();
-        task.start();
-        CurrentTask::set_current(current(), task);
-    }
-}
-
 /// Handles periodic timer ticks for the task manager.
 ///
 /// For example, advance scheduler states, checks timed events, etc.
@@ -124,11 +113,7 @@ pub fn spawn_raw<F>(f: F, name: String, stack_size: usize) -> AxTaskRef
 where
     F: FnOnce() + Send + 'static,
 {
-    #[cfg(not(feature = "onsel4"))]
-    return spawn_task(TaskInner::new(f, name, stack_size));
-
-    #[cfg(feature = "onsel4")]
-    return spawn_task(TaskInner::new_with_ipc(f, name, stack_size));
+    spawn_task(TaskInner::new(f, name, stack_size))
 }
 
 /// Spawns a new task with the default parameters.
@@ -177,7 +162,7 @@ pub fn set_current_affinity(cpumask: AxCpuMask) -> bool {
             // Spawn a new migration task for migrating.
             // use create task ipc instead
             #[cfg(feature = "onsel4")]
-            let migration_task = TaskInner::new_with_ipc(
+            let migration_task = TaskInner::new(
                 move || crate::run_queue::migrate_entry(curr),
                 "migration-task".into(),
                 MIGRATION_TASK_STACK_SIZE,
@@ -230,6 +215,7 @@ pub fn exit(exit_code: i32) -> ! {
 pub fn run_idle() -> ! {
     loop {
         yield_now();
+        debug!("idle task: waiting for IRQs...");
         #[cfg(feature = "irq")]
         axhal::asm::wait_for_irqs();
     }

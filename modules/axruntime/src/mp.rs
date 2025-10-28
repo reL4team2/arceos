@@ -66,7 +66,9 @@ pub fn rust_main_secondary(cpu_id: usize) -> ! {
         core::hint::spin_loop();
     }
 
-    #[cfg(feature = "irq")]
+    #[cfg(all(feature = "irq", not(feature = "onsel4")))]
+    axhal::asm::enable_irqs();
+    #[cfg(all(feature = "irq", feature = "onsel4"))]
     super::init_interrupt();
 
     #[cfg(all(feature = "tls", not(feature = "multitask")))]

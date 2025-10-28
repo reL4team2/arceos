@@ -151,7 +151,7 @@ fn test_wait_timeout_until() {
     }
 
     // Sleep for 100ms to let all tasks start and wait for timeout.
-    thread::sleep(Duration::from_millis(time_to_wait_in_millis - 10));
+    thread::sleep(Duration::from_millis(time_to_wait_in_millis - 50));
     // Set condition to true to wake up all tasks who call `ax_wait_queue_wait_until`.
     CONDITION.store(true, Ordering::Relaxed);
     // Wake up all tasks who are waiting for timeout.

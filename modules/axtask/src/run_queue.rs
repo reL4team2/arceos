@@ -314,6 +314,7 @@ impl<G: BaseGuard> CurrentRunQueueRef<'_, G> {
     #[cfg(feature = "smp")]
     pub fn migrate_current(&mut self, migration_task: AxTaskRef) {
         let curr = &self.current_task;
+        trace!("task migrate: {}", curr.id_name());
         assert!(curr.is_running());
 
         // Mark current task's state as `Ready`,
@@ -456,14 +457,7 @@ impl AxRunQueue {
     /// Create a new run queue for the specified CPU.
     /// The run queue is initialized with a per-CPU gc task in its scheduler.
     fn new(cpu_id: usize) -> Self {
-        let gc_task = TaskInner::new(
-            gc_entry,
-            "gc".into(),
-            axconfig::TASK_STACK_SIZE,
-            cpu_id,
-            false,
-        )
-        .into_arc();
+        let gc_task = TaskInner::new(gc_entry, "gc".into(), axconfig::TASK_STACK_SIZE).into_arc();
         // gc task should be pinned to the current CPU.
         gc_task.set_cpumask(AxCpuMask::one_shot(cpu_id));
 
@@ -652,13 +646,7 @@ pub(crate) fn init() {
 
     // Create the `idle` task (not current task).
     const IDLE_TASK_STACK_SIZE: usize = 4096;
-    let idle_task = TaskInner::new(
-        || crate::run_idle(),
-        "idle".into(),
-        IDLE_TASK_STACK_SIZE,
-        cpu_id,
-        false,
-    );
+    let idle_task = TaskInner::new(|| crate::run_idle(),"idle".into(),IDLE_TASK_STACK_SIZE);
     // idle task should be pinned to the current CPU.
     idle_task.set_cpumask(AxCpuMask::one_shot(cpu_id));
     IDLE_TASK.with_current(|i| {
@@ -668,21 +656,21 @@ pub(crate) fn init() {
     // Put the subsequent execution into the `main` task.
     cfg_if::cfg_if! {
         if #[cfg(feature = "onsel4")] {
-            let main_task = TaskInner::new(
+            let mut main_task = TaskInner::new(
                 || unsafe { crate::main() },
                 "main".into(),
                 axconfig::TASK_STACK_SIZE,
-                cpu_id, true,
-            )
-            .into_arc();
+            );
+            main_task.set_is_init(true);
             main_task.set_state(TaskState::Running);
             main_task.start();
+            unsafe { CurrentTask::init_current(main_task.into_arc()) }
         } else {
             let main_task = TaskInner::new_init("main".into()).into_arc();
             main_task.set_state(TaskState::Running);
+            unsafe { CurrentTask::init_current(main_task) }
         }
     }
-    unsafe { CurrentTask::init_set_current(main_task) }
 
     RUN_QUEUE.with_current(|rq| {
         rq.init_once(AxRunQueue::new(cpu_id));
@@ -698,13 +686,15 @@ pub(crate) fn init_secondary() {
     // Put the subsequent execution into the `idle` task.
     cfg_if::cfg_if! {
         if #[cfg(feature = "onsel4")] {
-            let idle_task = TaskInner::new(|| crate::run_idle(), "idle".into(), 4096, cpu_id, true).into_arc();
+            let mut idle_task = TaskInner::new(|| crate::run_idle(), "idle".into(), 4096);
+            idle_task.set_is_init(true);
             idle_task.set_state(TaskState::Running);
+            let idle_task_ptr = idle_task.into_arc();
             IDLE_TASK.with_current(|i| {
-                i.init_once(idle_task.clone());
+                i.init_once(idle_task_ptr.clone());
             });
-            idle_task.start();
-            unsafe { CurrentTask::init_set_current(idle_task) }
+            idle_task_ptr.start();
+            unsafe { CurrentTask::init_current(idle_task_ptr) }
         } else {
             let idle_task = TaskInner::new_init("idle".into()).into_arc();
             idle_task.set_state(TaskState::Running);

@@ -48,6 +48,7 @@ pub(crate) fn sel4_start_task(task: usize) {
     start_task(task)
 }
 
+#[allow(unused)]
 pub(crate) fn sel4_stop_task(task: usize) {
     stop_task(task)
 }
