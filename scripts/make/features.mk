@@ -40,6 +40,9 @@ lib_feat :=
 
 ifneq ($(MYPLAT),)
   ax_feat += myplat
+  ifeq ($(MYPLAT), axplat-aarch64-sel4)
+    ax_feat += onsel4
+  endif
 else
   ax_feat += defplat
 endif

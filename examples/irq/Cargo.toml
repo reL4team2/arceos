@@ -6,5 +6,4 @@ authors = ["Keyang Hu <keyang.hu@qq.com>"]
 description = "A simple demo to test the irq state of tasks under ArceOS"
 
 [dependencies]
-axstd = { workspace = true, features = ["multitask", "irq", "onsel4"], optional = true }
-axplat-aarch64-sel4 = { workspace = true, features = ["smp", "irq"] }
+axstd = { workspace = true, features = ["multitask", "irq"], optional = true }

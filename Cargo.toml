@@ -36,6 +36,9 @@ members = [
     "examples/irq",
     "examples/sleep",
     "examples/tls",
+    "examples/affinity",
+    "examples/priority",
+    "examples/yield",
 
     "platforms/axplat-aarch64-sel4",
     "sel4/kit",

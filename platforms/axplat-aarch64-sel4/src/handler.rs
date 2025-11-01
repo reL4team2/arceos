@@ -1,10 +1,10 @@
-use kit::ipc::ServiceEvent;
-use sel4::with_ipc_buffer_mut;
-use common::{read_types, reply_with};
-use common::config::DEFAULT_SERVE_EP;
-use crate::task::{create_sel4_task, exit_sel4_task, migrate_sel4_task, switch_sel4_task};
 #[cfg(feature = "irq")]
 use crate::irq::handle_irq;
+use crate::task::{create_sel4_task, exit_sel4_task, migrate_sel4_task, switch_sel4_task};
+use common::config::DEFAULT_SERVE_EP;
+use common::{read_types, reply_with};
+use kit::ipc::ServiceEvent;
+use sel4::with_ipc_buffer_mut;
 
 use log::*;
 

@@ -42,6 +42,7 @@ extern crate memory_addr;
 cfg_if::cfg_if! {
     if #[cfg(feature = "myplat")] {
         // link the custom platform crate in your application.
+        #[cfg(feature = "onsel4")]
         extern crate axplat_aarch64_sel4;
     } else if #[cfg(target_os = "none")] {
         #[cfg(target_arch = "x86_64")]
