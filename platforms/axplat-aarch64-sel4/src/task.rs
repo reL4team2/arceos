@@ -224,6 +224,13 @@ impl NormalTask {
             .tcb_suspend()
     }
 
+    pub fn add_pc_offset(&self, offset: usize) -> sel4::Result<()> {
+        let tcb = LeafSlot::new((self.cnode_index << CNODE_RADIX_BITS) + 1).cap();
+        let mut regs = tcb.tcb_read_all_registers(true)?;
+        *regs.pc_mut() = regs.pc() + offset as u64;
+        tcb.tcb_write_all_registers(false, &mut regs)
+    }
+
     pub fn exit(&self) {
         self.capset.drop().unwrap();
 
@@ -421,7 +428,8 @@ pub fn suspend_sel4_task(tid: usize) {
 
 pub fn switch_sel4_task(prev_tid: usize, next_tid: usize) {
     if let Some(t) = TASK_MAP.lock().get(&prev_tid) {
-        t.lock().suspend().unwrap();
+        // t.lock().suspend().unwrap();
+        t.lock().add_pc_offset(4).unwrap();
     }
 
     if let Some(t) = TASK_MAP.lock().get(&next_tid) {

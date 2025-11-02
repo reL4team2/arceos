@@ -39,9 +39,9 @@ pub(crate) fn event_handler(cpu_id: usize) -> ! {
             match msg_label {
                 ServiceEvent::SwitchTask => {
                     let (prev_task, next_task) = read_types!(ib, usize, usize);
-                    reply_with!(ib, 0);
                     debug!("Switch to task {:#x} on cpu {}", next_task, cpu_id);
                     switch_sel4_task(prev_task, next_task);
+                    reply_with!(ib, 0);
                 }
                 ServiceEvent::CreateTask => {
                     let (tid, entry, stack, tls, affinity) =
@@ -56,8 +56,8 @@ pub(crate) fn event_handler(cpu_id: usize) -> ! {
                 ServiceEvent::ExitTask => {
                     let task_ptr = read_types!(ib, usize);
                     debug!("Exit task {:#x} on cpu {}", task_ptr, cpu_id);
-                    reply_with!(ib, 0);
                     exit_sel4_task(task_ptr);
+                    reply_with!(ib, 0);
                 }
                 ServiceEvent::ExitSystem => {
                     debug!("Exit system on cpu {}", cpu_id);
@@ -67,8 +67,8 @@ pub(crate) fn event_handler(cpu_id: usize) -> ! {
                 ServiceEvent::MigrateTask => {
                     let (task_ptr, target) = read_types!(ib, usize, usize);
                     debug!("migrate task on cpu {}", cpu_id);
-                    reply_with!(ib, 0);
                     migrate_sel4_task(task_ptr, target);
+                    reply_with!(ib, 0);
                 }
             }
         }
