@@ -4,8 +4,8 @@ use kspin::SpinNoIrq;
 use sel4::{Cap, CapRights, cap::Untyped};
 use sel4_kit::slot_manager::LeafSlot;
 
-use kit::obj::allocator::UntypedAllocator;
 use lazyinit::LazyInit;
+use sel4_oskit::allocator::UntypedAllocator;
 
 static UNTYPED_ALLOCATOR: LazyInit<SpinNoIrq<UntypedAllocator>> = LazyInit::new();
 pub const ALLOC_SIZE_BITS: usize = 18; // 256KB

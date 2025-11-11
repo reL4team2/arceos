@@ -592,13 +592,14 @@ dependencies = [
  "cfg-if",
  "heapless 0.8.0",
  "kernel_guard",
- "kit",
  "lazyinit",
  "linkme",
  "log",
  "memory_addr",
  "page_table_multiarch",
  "percpu",
+ "sel4-if",
+ "sel4-oskit",
 ]
 
 [[package]]
@@ -841,7 +842,6 @@ dependencies = [
  "common",
  "common-macros",
  "int_ratio",
- "kit",
  "kspin",
  "lazyinit",
  "log",
@@ -849,7 +849,9 @@ dependencies = [
  "num_enum",
  "percpu",
  "sel4",
+ "sel4-if",
  "sel4-kit",
+ "sel4-oskit",
  "srv-gate",
  "uart-thread",
  "zerocopy 0.8.26",
@@ -1060,7 +1062,6 @@ dependencies = [
  "cpumask",
  "crate_interface",
  "kernel_guard",
- "kit",
  "kspin",
  "lazyinit",
  "log",
@@ -1068,6 +1069,8 @@ dependencies = [
  "percpu",
  "rand",
  "sel4",
+ "sel4-if",
+ "sel4-oskit",
  "timer_list",
 ]
 
@@ -1301,7 +1304,7 @@ checksum = "b05b61dc5112cbb17e4b6cd61790d9845d13888356391624cbe7e41efeac1e75"
 [[package]]
 name = "common"
 version = "0.1.0"
-source = "git+https://github.com/reL4team2/rel4-linux-kit.git?rev=2c55dac#2c55dac6d20a3d2ab4535f3664325105fbb17544"
+source = "git+https://github.com/reL4team2/rel4-linux-kit.git?rev=77f5bf3#77f5bf37d86b7d85dfc424a8743ca2e219d66d12"
 dependencies = [
  "bitflags 2.9.2",
  "common-macros",
@@ -1319,7 +1322,7 @@ dependencies = [
 [[package]]
 name = "common-macros"
 version = "0.1.0"
-source = "git+https://github.com/reL4team2/rel4-linux-kit.git?rev=2c55dac#2c55dac6d20a3d2ab4535f3664325105fbb17544"
+source = "git+https://github.com/reL4team2/rel4-linux-kit.git?rev=77f5bf3#77f5bf37d86b7d85dfc424a8743ca2e219d66d12"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -1742,6 +1745,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6045ea39e8d2862506c0dff6c65d068da362335df698bb1634033492740d2170"
 
 [[package]]
+name = "interface"
+version = "0.2.0"
+dependencies = [
+ "axplat-macros 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "const-str",
+ "crate_interface",
+]
+
+[[package]]
 name = "is_terminal_polyfill"
 version = "1.70.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1787,7 +1799,6 @@ dependencies = [
 [[package]]
 name = "kernel_guard"
 version = "0.1.2"
-source = "git+https://github.com/croakexciting/kernel_guard.git?rev=f0c503d#f0c503d7fd1e9457c4f2bb39370b57c1e42f6b05"
 dependencies = [
  "cfg-if",
  "crate_interface",
@@ -2468,6 +2479,16 @@ version = "0.1.0"
 source = "git+https://github.com/seL4/rust-sel4?rev=5b9ebfd#5b9ebfd0a3a9805f28cc9222cd558e8d56a3919d"
 
 [[package]]
+name = "sel4-if"
+version = "0.1.0"
+source = "git+https://github.com/reL4team2/rel4-linux-kit.git?rev=77f5bf3#77f5bf37d86b7d85dfc424a8743ca2e219d66d12"
+dependencies = [
+ "axplat-macros 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "const-str",
+ "crate_interface",
+]
+
+[[package]]
 name = "sel4-immediate-sync-once-cell"
 version = "0.1.0"
 source = "git+https://github.com/seL4/rust-sel4?rev=5b9ebfd#5b9ebfd0a3a9805f28cc9222cd558e8d56a3919d"
@@ -2483,7 +2504,7 @@ dependencies = [
 [[package]]
 name = "sel4-kit"
 version = "0.1.0"
-source = "git+https://github.com/reL4team2/rel4-linux-kit.git?rev=2c55dac#2c55dac6d20a3d2ab4535f3664325105fbb17544"
+source = "git+https://github.com/reL4team2/rel4-linux-kit.git?rev=77f5bf3#77f5bf37d86b7d85dfc424a8743ca2e219d66d12"
 dependencies = [
  "log",
  "sel4",
@@ -2496,6 +2517,24 @@ source = "git+https://github.com/seL4/rust-sel4?rev=5b9ebfd#5b9ebfd0a3a9805f28cc
 dependencies = [
  "lock_api",
  "log",
+]
+
+[[package]]
+name = "sel4-oskit"
+version = "0.1.0"
+source = "git+https://github.com/reL4team2/rel4-linux-kit.git?rev=77f5bf3#77f5bf37d86b7d85dfc424a8743ca2e219d66d12"
+dependencies = [
+ "common",
+ "common-macros",
+ "kspin",
+ "linkme",
+ "log",
+ "memory_addr",
+ "num_enum",
+ "sel4",
+ "sel4-kit",
+ "spin 0.9.8",
+ "zerocopy 0.8.26",
 ]
 
 [[package]]
@@ -2518,7 +2557,7 @@ source = "git+https://github.com/seL4/rust-sel4?rev=5b9ebfd#5b9ebfd0a3a9805f28cc
 [[package]]
 name = "sel4-runtime"
 version = "0.1.0"
-source = "git+https://github.com/reL4team2/rel4-linux-kit.git?rev=2c55dac#2c55dac6d20a3d2ab4535f3664325105fbb17544"
+source = "git+https://github.com/reL4team2/rel4-linux-kit.git?rev=77f5bf3#77f5bf37d86b7d85dfc424a8743ca2e219d66d12"
 dependencies = [
  "common",
  "common-macros",
@@ -2703,7 +2742,7 @@ dependencies = [
 [[package]]
 name = "srv-gate"
 version = "0.1.0"
-source = "git+https://github.com/reL4team2/rel4-linux-kit.git?rev=2c55dac#2c55dac6d20a3d2ab4535f3664325105fbb17544"
+source = "git+https://github.com/reL4team2/rel4-linux-kit.git?rev=77f5bf3#77f5bf37d86b7d85dfc424a8743ca2e219d66d12"
 dependencies = [
  "common",
  "libc-core",
@@ -2846,7 +2885,7 @@ checksum = "1dccffe3ce07af9386bfd29e80c0ab1a8205a2fc34e4bcd40364df902cfa8f3f"
 [[package]]
 name = "uart-thread"
 version = "0.1.0"
-source = "git+https://github.com/reL4team2/rel4-linux-kit.git?rev=2c55dac#2c55dac6d20a3d2ab4535f3664325105fbb17544"
+source = "git+https://github.com/reL4team2/rel4-linux-kit.git?rev=77f5bf3#77f5bf37d86b7d85dfc424a8743ca2e219d66d12"
 dependencies = [
  "arm_pl011 0.1.0 (git+https://github.com/Byte-OS/arm_pl011.git?rev=8a66e24)",
  "common",

@@ -1,7 +1,7 @@
-use axplat::sel4::{
+use sel4_if::{
     create_task, destroy_task, is_init_task, migrate_task, start_task, stop_task, switch_task,
 };
-use kit::ipc::{
+use sel4_oskit::ipc::{
     create_task as ipc_create_task, exit_system, exit_task, migrate_task as ipc_migrate_task,
     switch_task as ipc_switch_task,
 };

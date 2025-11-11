@@ -112,21 +112,21 @@ pub use axcpu::asm;
 
 #[cfg(feature = "onsel4")]
 pub mod asm {
-    pub use kit::asm::*;
+    pub use sel4_oskit::asm::*;
 
     #[cfg(feature = "irq")]
     pub fn disable_irqs() {
-        axplat::sel4::disable_irqs()
+        interface::disable_irqs()
     }
 
     #[cfg(feature = "irq")]
     pub fn enable_irqs() {
-        axplat::sel4::enable_irqs()
+        interface::enable_irqs()
     }
 
     #[cfg(feature = "irq")]
     pub fn irqs_enabled() -> bool {
-        axplat::sel4::irqs_enabled()
+        interface::irqs_enabled()
     }
 }
 

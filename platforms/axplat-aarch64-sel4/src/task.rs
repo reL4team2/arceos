@@ -11,9 +11,7 @@ use common::{
 use sel4::{
     CNodeCapData, CapRights,
     cap::{self},
-    init_thread,
-    with_ipc_buffer,
-    with_ipc_buffer_mut,
+    init_thread, with_ipc_buffer, with_ipc_buffer_mut,
 };
 use sel4_kit::slot_manager::LeafSlot;
 
@@ -22,7 +20,8 @@ use alloc::sync::Arc;
 use kspin::SpinNoIrq;
 use memory_addr::VirtAddr;
 
-use kit::obj::{CapSet, allocator::IndexAllocator};
+use sel4_oskit::allocator::IndexAllocator;
+use sel4_oskit::capset::CapSet;
 
 use crate::mem::{alloc_ipc_buffer, alloc_ipc_buffer_by_capset, dealloc_ipc_buffer};
 use crate::obj::{alloc_untyped, alloc_untyped_raw, recycle_untyped};
@@ -40,15 +39,11 @@ static TASK_MAP: SpinNoIrq<BTreeMap<usize, Arc<SpinNoIrq<NormalTask>>>> =
     SpinNoIrq::new(BTreeMap::new());
 
 pub fn set_init_task() {
-    with_ipc_buffer_mut(|ib| {
-        ib.set_user_data(0x1 as _)
-    })
+    with_ipc_buffer_mut(|ib| ib.set_user_data(0x1 as _))
 }
 
 fn init_task() -> bool {
-    with_ipc_buffer(|ib| {
-        ib.user_data() == 0x1
-    })
+    with_ipc_buffer(|ib| ib.user_data() == 0x1)
 }
 
 /// Basic unit representing a task in seL4.
@@ -437,7 +432,7 @@ pub fn switch_sel4_task(prev_tid: usize, next_tid: usize) {
     }
 }
 
-use axplat::sel4::Sel4TaskIf;
+use sel4_if::Sel4TaskIf;
 
 struct Sel4TaskIfImpl;
 
@@ -470,5 +465,9 @@ impl Sel4TaskIf for Sel4TaskIfImpl {
 
     fn is_init_task() -> bool {
         init_task()
+    }
+
+    fn sel4_task_id() -> usize {
+        0
     }
 }
