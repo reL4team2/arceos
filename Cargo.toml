@@ -82,13 +82,13 @@ axplat-aarch64-sel4 = { path = "platforms/axplat-aarch64-sel4" }
 kit = { path = "sel4/kit" }
 interface = { path = "sel4/interface" }
 
-sel4-oskit = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "77f5bf3" }
-sel4-if = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "77f5bf3" }
-sel4-kit = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "77f5bf3" }
-srv-gate = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "77f5bf3" }
-uart-thread = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "77f5bf3" }
-common = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "77f5bf3" }
-common-macros = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "77f5bf3" }
+sel4-oskit = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "1f120bf" }
+sel4-if = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "1f120bf" }
+sel4-kit = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "1f120bf" }
+srv-gate = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "1f120bf" }
+uart-thread = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "1f120bf" }
+common = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "1f120bf" }
+common-macros = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "1f120bf" }
 sel4 = { git = "https://github.com/seL4/rust-sel4", rev = "5b9ebfd" }
 
 [patch.crates-io]

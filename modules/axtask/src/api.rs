@@ -67,13 +67,13 @@ impl kernel_guard::KernelGuardExtIf for KernelGuardExtIfImpl {
 
     #[cfg(feature = "irq")]
     fn disable_irq() -> usize {
-        interface::disable_irqs();
+        sel4_if::disable_irqs();
         0
     }
 
     #[cfg(feature = "irq")]
     fn enable_irq() {
-        interface::enable_irqs();
+        sel4_if::enable_irqs();
     }
 }
 

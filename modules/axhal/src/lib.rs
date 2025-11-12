@@ -116,17 +116,17 @@ pub mod asm {
 
     #[cfg(feature = "irq")]
     pub fn disable_irqs() {
-        interface::disable_irqs()
+        sel4_if::disable_irqs()
     }
 
     #[cfg(feature = "irq")]
     pub fn enable_irqs() {
-        interface::enable_irqs()
+        sel4_if::enable_irqs()
     }
 
     #[cfg(feature = "irq")]
     pub fn irqs_enabled() -> bool {
-        interface::irqs_enabled()
+        sel4_if::irqs_enabled()
     }
 }
 

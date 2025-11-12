@@ -617,6 +617,7 @@ extern "C" fn task_entry() -> ! {
         task.id_name(),
         axhal::percpu::this_cpu_id()
     );
+    sel4_if::set_sel4_task_id(task.id().0 as _);
     #[cfg(feature = "smp")]
     unsafe {
         // Clear the prev task on CPU before running the task entry function.

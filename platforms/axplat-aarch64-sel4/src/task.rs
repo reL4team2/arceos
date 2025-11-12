@@ -39,11 +39,19 @@ static TASK_MAP: SpinNoIrq<BTreeMap<usize, Arc<SpinNoIrq<NormalTask>>>> =
     SpinNoIrq::new(BTreeMap::new());
 
 pub fn set_init_task() {
-    with_ipc_buffer_mut(|ib| ib.set_user_data(0x1 as _))
+    with_ipc_buffer_mut(|ib| ib.set_user_data(i32::MAX as _))
+}
+
+pub fn set_task_id(tid: usize) {
+    with_ipc_buffer_mut(|ib| ib.set_user_data(tid as _))
+}
+
+pub fn get_task_id() -> usize {
+    with_ipc_buffer_mut(|ib| ib.user_data() as usize)
 }
 
 fn init_task() -> bool {
-    with_ipc_buffer(|ib| ib.user_data() == 0x1)
+    with_ipc_buffer(|ib| ib.user_data() == i32::MAX as u64)
 }
 
 /// Basic unit representing a task in seL4.
@@ -468,6 +476,10 @@ impl Sel4TaskIf for Sel4TaskIfImpl {
     }
 
     fn sel4_task_id() -> usize {
-        0
+        get_task_id()
+    }
+
+    fn set_sel4_task_id(tid: usize) {
+        set_task_id(tid);
     }
 }
