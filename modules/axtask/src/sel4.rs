@@ -21,11 +21,7 @@ pub(crate) fn sel4_create_task(
 }
 
 pub(crate) fn sel4_switch_task(prev_task: usize, next_task: usize) -> usize {
-    if is_init_task() {
-        switch_task(prev_task, next_task)
-    } else {
-        ipc_switch_task(prev_task, next_task)
-    }
+    ipc_switch_task(prev_task, next_task)
 }
 
 pub(crate) fn sel4_exit_task(task: usize) {

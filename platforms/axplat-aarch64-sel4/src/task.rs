@@ -17,7 +17,7 @@ use sel4_kit::slot_manager::LeafSlot;
 
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
-use kspin::SpinNoIrq;
+use kspin::SpinRaw;
 use memory_addr::VirtAddr;
 
 use sel4_oskit::allocator::IndexAllocator;
@@ -32,11 +32,11 @@ unsafe extern "C" {
     fn _etbss();
 }
 
-static TASK_CSPACE_ALLOCATOR: SpinNoIrq<IndexAllocator> =
-    const { SpinNoIrq::new(IndexAllocator::new(1, 4096 - 1)) };
+static TASK_CSPACE_ALLOCATOR: SpinRaw<IndexAllocator> =
+    const { SpinRaw::new(IndexAllocator::new(1, 4096 - 1)) };
 
-static TASK_MAP: SpinNoIrq<BTreeMap<usize, Arc<SpinNoIrq<NormalTask>>>> =
-    SpinNoIrq::new(BTreeMap::new());
+static TASK_MAP: SpinRaw<BTreeMap<usize, Arc<SpinRaw<NormalTask>>>> =
+    SpinRaw::new(BTreeMap::new());
 
 pub fn set_init_task() {
     with_ipc_buffer_mut(|ib| ib.set_user_data(i32::MAX as _))
@@ -398,7 +398,7 @@ pub fn create_sel4_task(
     tls: usize,
     cpu_id: usize,
 ) -> usize {
-    let t = Arc::new(SpinNoIrq::new(
+    let t = Arc::new(SpinRaw::new(
         NormalTask::new(tid, entry, stack, 100, tls, cpu_id).unwrap(),
     ));
     TASK_MAP.lock().insert(tid, t);

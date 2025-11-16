@@ -66,7 +66,7 @@ pub(crate) fn event_handler(cpu_id: usize) -> ! {
                 }
                 ServiceEvent::MigrateTask => {
                     let (task_ptr, target) = read_types!(ib, usize, usize);
-                    debug!("migrate task on cpu {}", cpu_id);
+                    debug!("migrate task {:#x} on cpu {}", task_ptr, cpu_id);
                     migrate_sel4_task(task_ptr, target);
                     reply_with!(ib, 0);
                 }

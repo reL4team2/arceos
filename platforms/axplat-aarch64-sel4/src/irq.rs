@@ -50,11 +50,11 @@ pub(crate) fn init_later(cpu: usize) {
 pub fn handle_irq(badge: usize) {
     if irqs_enabled() {
         handle_trap!(IRQ, badge as _);
-    }
 
-    IRQ_CAPS.with_current(|irq_cap| {
-        irq_cap.ack_irq(badge as _);
-    });
+        IRQ_CAPS.with_current(|irq_cap| {
+            irq_cap.ack_irq(badge as _);
+        });
+    }
 }
 
 #[inline(always)]

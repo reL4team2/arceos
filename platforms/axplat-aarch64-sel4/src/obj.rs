@@ -1,13 +1,13 @@
 //! seL4 global object allocator and task object allocator.
 use common::ObjectAllocator;
-use kspin::SpinNoIrq;
+use kspin::SpinRaw;
 use sel4::{Cap, CapRights, cap::Untyped};
 use sel4_kit::slot_manager::LeafSlot;
 
 use lazyinit::LazyInit;
 use sel4_oskit::allocator::UntypedAllocator;
 
-static UNTYPED_ALLOCATOR: LazyInit<SpinNoIrq<UntypedAllocator>> = LazyInit::new();
+static UNTYPED_ALLOCATOR: LazyInit<SpinRaw<UntypedAllocator>> = LazyInit::new();
 pub const ALLOC_SIZE_BITS: usize = 18; // 256KB
 
 #[percpu::def_percpu]
@@ -27,7 +27,7 @@ pub(crate) fn init() {
         )
         .unwrap();
 
-    UNTYPED_ALLOCATOR.init_once(SpinNoIrq::new(UntypedAllocator::new(
+    UNTYPED_ALLOCATOR.init_once(SpinRaw::new(UntypedAllocator::new(
         unsafe { OBJ_ALLOCATOR.current_ref_raw() },
         ALLOC_SIZE_BITS,
         axconfig::plat::CPU_NUM,
