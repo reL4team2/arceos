@@ -646,7 +646,7 @@ pub(crate) fn init() {
 
     // Create the `idle` task (not current task).
     const IDLE_TASK_STACK_SIZE: usize = 4096;
-    let idle_task = TaskInner::new(|| crate::run_idle(),"idle".into(),IDLE_TASK_STACK_SIZE);
+    let idle_task = TaskInner::new(|| crate::run_idle(), "idle".into(), IDLE_TASK_STACK_SIZE);
     // idle task should be pinned to the current CPU.
     idle_task.set_cpumask(AxCpuMask::one_shot(cpu_id));
     IDLE_TASK.with_current(|i| {
@@ -663,7 +663,6 @@ pub(crate) fn init() {
             );
             main_task.set_is_init(true);
             main_task.set_state(TaskState::Running);
-            main_task.start();
             unsafe { CurrentTask::init_current(main_task.into_arc()) }
         } else {
             let main_task = TaskInner::new_init("main".into()).into_arc();
@@ -693,7 +692,6 @@ pub(crate) fn init_secondary() {
             IDLE_TASK.with_current(|i| {
                 i.init_once(idle_task_ptr.clone());
             });
-            idle_task_ptr.start();
             unsafe { CurrentTask::init_current(idle_task_ptr) }
         } else {
             let idle_task = TaskInner::new_init("idle".into()).into_arc();

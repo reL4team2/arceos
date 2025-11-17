@@ -39,6 +39,7 @@ members = [
     "examples/affinity",
     "examples/priority",
     "examples/yield",
+    "examples/parallel",
 
     "platforms/axplat-aarch64-sel4",
     "sel4/kit", "sel4/interface",

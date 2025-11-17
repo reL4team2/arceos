@@ -250,3 +250,10 @@ unsafe extern "C" {
     /// Application's entry point.
     pub fn main();
 }
+
+#[cfg(feature = "onsel4")]
+pub fn run_init_task() {
+    if let Some(curr) = current_may_uninit() {
+        curr.start();
+    }
+}
