@@ -80,6 +80,9 @@ log-level-info = ["axfeat/log-level-info"]
 log-level-debug = ["axfeat/log-level-debug"]
 log-level-trace = ["axfeat/log-level-trace"]
 
+# Run arceos in user level
+onsel4 = ["axfeat/onsel4", "arceos_api/onsel4"]
+
 [dependencies]
 axfeat = { workspace = true }
 arceos_api = { workspace = true }

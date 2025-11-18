@@ -26,7 +26,7 @@ pub fn this_cpu_is_bsp() -> bool {
 ///
 /// In aarch64 architecture, we use `SP_EL0` as the read cache for
 /// the current task pointer. And this function will update this cache.
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(target_arch = "aarch64", not(feature = "onsel4")))]
 unsafe fn cache_current_task_ptr<T>(ptr: *const T) {
     use aarch64_cpu::registers::{SP_EL0, Writeable};
     SP_EL0.set(ptr as u64);
@@ -44,6 +44,7 @@ pub fn current_task_ptr<T>() -> *const T {
         CURRENT_TASK_PTR.read_current_raw() as _
     }
     #[cfg(any(
+        feature = "onsel4",
         target_arch = "riscv32",
         target_arch = "riscv64",
         target_arch = "loongarch64"
@@ -53,7 +54,7 @@ pub fn current_task_ptr<T>() -> *const T {
         let _guard = kernel_guard::IrqSave::new();
         CURRENT_TASK_PTR.read_current_raw() as _
     }
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(all(target_arch = "aarch64", not(feature = "onsel4"))) ]
     {
         // on ARM64, we use `SP_EL0` to cache the current task pointer.
         use aarch64_cpu::registers::{Readable, SP_EL0};
@@ -89,6 +90,7 @@ pub unsafe fn set_current_task_ptr<T>(ptr: *const T) {
         unsafe { CURRENT_TASK_PTR.write_current_raw(ptr as usize) }
     }
     #[cfg(any(
+        feature = "onsel4",
         target_arch = "riscv32",
         target_arch = "riscv64",
         target_arch = "loongarch64"
@@ -97,7 +99,7 @@ pub unsafe fn set_current_task_ptr<T>(ptr: *const T) {
         let _guard = kernel_guard::IrqSave::new();
         unsafe { CURRENT_TASK_PTR.write_current_raw(ptr as usize) }
     }
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(all(target_arch = "aarch64", not(feature = "onsel4")))]
     {
         let _guard = kernel_guard::IrqSave::new();
         unsafe {

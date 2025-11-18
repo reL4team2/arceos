@@ -53,6 +53,30 @@ impl kernel_guard::KernelGuardIf for KernelGuardIfImpl {
     }
 }
 
+struct KernelGuardExtIfImpl;
+
+#[crate_interface::impl_interface]
+impl kernel_guard::KernelGuardExtIf for KernelGuardExtIfImpl {
+    #[cfg(not(feature = "irq"))]
+    fn disable_irq() -> usize {
+        0
+    }
+
+    #[cfg(not(feature = "irq"))]
+    fn enable_irq() {}
+
+    #[cfg(feature = "irq")]
+    fn disable_irq() -> usize {
+        sel4_if::disable_irqs();
+        0
+    }
+
+    #[cfg(feature = "irq")]
+    fn enable_irq() {
+        sel4_if::enable_irqs();
+    }
+}
+
 /// Gets the current task, or returns [`None`] if the current task is not
 /// initialized.
 pub fn current_may_uninit() -> Option<CurrentTask> {
@@ -160,6 +184,8 @@ pub fn set_current_affinity(cpumask: AxCpuMask) -> bool {
         if !cpumask.get(axhal::percpu::this_cpu_id()) {
             const MIGRATION_TASK_STACK_SIZE: usize = 4096;
             // Spawn a new migration task for migrating.
+            // use create task ipc instead
+            #[cfg(feature = "onsel4")]
             let migration_task = TaskInner::new(
                 move || crate::run_queue::migrate_entry(curr),
                 "migration-task".into(),
@@ -216,5 +242,18 @@ pub fn run_idle() -> ! {
         debug!("idle task: waiting for IRQs...");
         #[cfg(feature = "irq")]
         axhal::asm::wait_for_irqs();
+    }
+}
+
+#[cfg(feature = "onsel4")]
+unsafe extern "C" {
+    /// Application's entry point.
+    pub fn main();
+}
+
+#[cfg(feature = "onsel4")]
+pub fn run_init_task() {
+    if let Some(curr) = current_may_uninit() {
+        curr.start();
     }
 }

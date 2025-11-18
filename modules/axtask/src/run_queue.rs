@@ -16,6 +16,9 @@ use crate::task::{CurrentTask, TaskState};
 use crate::wait_queue::WaitQueueGuard;
 use crate::{AxCpuMask, AxTaskRef, Scheduler, TaskInner, WaitQueue};
 
+#[cfg(feature = "onsel4")]
+use crate::sel4::*;
+
 macro_rules! percpu_static {
     ($(
         $(#[$comment:meta])*
@@ -170,6 +173,14 @@ pub(crate) fn select_run_queue<G: BaseGuard>(task: &AxTaskRef) -> AxRunQueueRef<
     {
         // When SMP is enabled, select the run queue based on the task's CPU affinity and load balance.
         let index = select_run_queue_index(task.cpumask());
+
+        // migrate sel4 task to the correct CPU
+        #[cfg(feature = "onsel4")]
+        {
+            let sel4_task = task.sel4_task();
+            sel4_migrate_task(sel4_task, index);
+        }
+
         AxRunQueueRef {
             inner: get_run_queue(index),
             state: irq_state,
@@ -525,7 +536,7 @@ impl AxRunQueue {
 
     fn switch_to(&mut self, prev_task: CurrentTask, next_task: AxTaskRef) {
         // Make sure that IRQs are disabled by kernel guard or other means.
-        #[cfg(all(not(test), feature = "irq"))] // Note: irq is faked under unit tests.
+        #[cfg(all(not(test), feature = "irq", not(feature = "onsel4")))] // Note: irq is faked under unit tests.
         assert!(
             !axhal::asm::irqs_enabled(),
             "IRQs must be disabled during scheduling"
@@ -547,28 +558,35 @@ impl AxRunQueue {
         #[cfg(feature = "smp")]
         next_task.set_on_cpu(true);
 
+        // Store the weak pointer of **prev_task** in percpu variable `PREV_TASK`.
+        #[cfg(feature = "smp")]
         unsafe {
-            let prev_ctx_ptr = prev_task.ctx_mut_ptr();
-            let next_ctx_ptr = next_task.ctx_mut_ptr();
+            *PREV_TASK.current_ref_mut_raw() = Arc::downgrade(prev_task.as_task_ref());
+        }
 
-            // Store the weak pointer of **prev_task** in percpu variable `PREV_TASK`.
-            #[cfg(feature = "smp")]
-            {
-                *PREV_TASK.current_ref_mut_raw() = Arc::downgrade(prev_task.as_task_ref());
+        // The strong reference count of `prev_task` will be decremented by 1,
+        // but won't be dropped until `gc_entry()` is called.
+        assert!(Arc::strong_count(prev_task.as_task_ref()) > 1);
+        assert!(Arc::strong_count(&next_task) >= 1);
+
+        cfg_if::cfg_if! {
+            if #[cfg(feature = "onsel4")] {
+                let prev_task_id: usize = prev_task.sel4_task() as _;
+                let next_task_id: usize = next_task.sel4_task() as _;
+                unsafe { CurrentTask::set_current(prev_task, next_task) };
+                sel4_switch_task(prev_task_id, next_task_id);
+            } else {
+                let prev_ctx_ptr = prev_task.ctx_mut_ptr();
+                let next_ctx_ptr = next_task.ctx_mut_ptr();
+                CurrentTask::set_current(prev_task, next_task);
+                (*prev_ctx_ptr).switch_to(&*next_ctx_ptr);
             }
+        }
 
-            // The strong reference count of `prev_task` will be decremented by 1,
-            // but won't be dropped until `gc_entry()` is called.
-            assert!(Arc::strong_count(prev_task.as_task_ref()) > 1);
-            assert!(Arc::strong_count(&next_task) >= 1);
-
-            CurrentTask::set_current(prev_task, next_task);
-
-            (*prev_ctx_ptr).switch_to(&*next_ctx_ptr);
-
-            // Current it's **next_task** running on this CPU, clear the `prev_task`'s `on_cpu` field
-            // to indicate that it has finished its scheduling process and no longer running on this CPU.
-            #[cfg(feature = "smp")]
+        // Current it's **next_task** running on this CPU, clear the `prev_task`'s `on_cpu` field
+        // to indicate that it has finished its scheduling process and no longer running on this CPU.
+        #[cfg(feature = "smp")]
+        unsafe {
             clear_prev_task_on_cpu();
         }
     }
@@ -636,9 +654,22 @@ pub(crate) fn init() {
     });
 
     // Put the subsequent execution into the `main` task.
-    let main_task = TaskInner::new_init("main".into()).into_arc();
-    main_task.set_state(TaskState::Running);
-    unsafe { CurrentTask::init_current(main_task) }
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "onsel4")] {
+            let mut main_task = TaskInner::new(
+                || unsafe { crate::main() },
+                "main".into(),
+                axconfig::TASK_STACK_SIZE,
+            );
+            main_task.set_is_init(true);
+            main_task.set_state(TaskState::Running);
+            unsafe { CurrentTask::init_current(main_task.into_arc()) }
+        } else {
+            let main_task = TaskInner::new_init("main".into()).into_arc();
+            main_task.set_state(TaskState::Running);
+            unsafe { CurrentTask::init_current(main_task) }
+        }
+    }
 
     RUN_QUEUE.with_current(|rq| {
         rq.init_once(AxRunQueue::new(cpu_id));
@@ -652,12 +683,25 @@ pub(crate) fn init_secondary() {
     let cpu_id = this_cpu_id();
 
     // Put the subsequent execution into the `idle` task.
-    let idle_task = TaskInner::new_init("idle".into()).into_arc();
-    idle_task.set_state(TaskState::Running);
-    IDLE_TASK.with_current(|i| {
-        i.init_once(idle_task.clone());
-    });
-    unsafe { CurrentTask::init_current(idle_task) }
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "onsel4")] {
+            let mut idle_task = TaskInner::new(|| crate::run_idle(), "idle".into(), 4096);
+            idle_task.set_is_init(true);
+            idle_task.set_state(TaskState::Running);
+            let idle_task_ptr = idle_task.into_arc();
+            IDLE_TASK.with_current(|i| {
+                i.init_once(idle_task_ptr.clone());
+            });
+            unsafe { CurrentTask::init_current(idle_task_ptr) }
+        } else {
+            let idle_task = TaskInner::new_init("idle".into()).into_arc();
+            idle_task.set_state(TaskState::Running);
+            IDLE_TASK.with_current(|i| {
+                i.init_once(idle_task.clone());
+            });
+            unsafe { CurrentTask::init_current(idle_task) }
+        }
+    }
 
     RUN_QUEUE.with_current(|rq| {
         rq.init_once(AxRunQueue::new(cpu_id));

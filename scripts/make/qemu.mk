@@ -18,6 +18,10 @@ else ifeq ($(ARCH), aarch64)
   ifeq ($(PLAT_NAME), aarch64-raspi4)
     machine := raspi4b
     override MEM := 2G
+  else ifeq ($(PLAT_NAME), aarch64-sel4)
+    machine := virt,virtualization=on
+    override MEM := 1G
+    override FINAL_IMG := $(OUT_DIR)/image.elf
   else
     machine := virt
   endif

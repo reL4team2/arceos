@@ -24,7 +24,7 @@ multitask = [
     "dep:crate_interface",
     "dep:cpumask",
 ]
-irq = []
+irq = ["sel4-if?/irq"]
 tls = ["axhal/tls"]
 preempt = ["irq", "percpu?/preempt", "kernel_guard/preempt"]
 smp = ["kspin/smp"]
@@ -34,6 +34,8 @@ sched-rr = ["multitask", "preempt"]
 sched-cfs = ["multitask", "preempt"]
 
 test = ["percpu?/sp-naive"]
+
+onsel4 = ["axplat", "common-macros", "sel4", "sel4-oskit", "sel4-if"]
 
 [dependencies]
 cfg-if = "1.0"
@@ -49,6 +51,11 @@ kernel_guard = { version = "0.1", optional = true }
 crate_interface = { version = "0.1", optional = true }
 cpumask = { version = "0.1", optional = true }
 axsched = { version = "0.3", optional = true }
+axplat = { version = "0.2", feature = ["onsel4"], optional = true }
+common-macros = { workspace = true, optional = true }
+sel4 = { workspace = true, optional = true }
+sel4-oskit = { workspace = true, features = ["alloc"], optional = true }
+sel4-if = { workspace = true, optional = true }
 
 [dev-dependencies]
 rand = "0.9"

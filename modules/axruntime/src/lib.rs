@@ -42,6 +42,7 @@ const LOGO: &str = r#"
 d88P     888 888      "Y8888P  "Y8888   "Y88888P"   "Y8888P"
 "#;
 
+#[cfg(not(feature = "onsel4"))]
 unsafe extern "C" {
     /// Application's entry point.
     fn main();
@@ -106,6 +107,12 @@ fn is_init_ok() -> bool {
 pub fn rust_main(cpu_id: usize, arg: usize) -> ! {
     unsafe { axhal::mem::clear_bss() };
     axhal::init_percpu(cpu_id);
+
+    axalloc::global_init(
+        axconfig::plat::INIT_HEAP_BASE,
+        axconfig::plat::INIT_HEAP_SIZE,
+    );
+
     axhal::init_early(cpu_id, arg);
 
     ax_println!("{}", LOGO);
@@ -151,7 +158,7 @@ pub fn rust_main(cpu_id: usize, arg: usize) -> ! {
     #[cfg(feature = "alloc")]
     init_allocator();
 
-    #[cfg(feature = "paging")]
+    #[cfg(all(feature = "paging", not(feature = "onsel4")))]
     axmm::init_memory_management();
 
     info!("Initialize platform devices...");
@@ -199,14 +206,23 @@ pub fn rust_main(cpu_id: usize, arg: usize) -> ! {
         core::hint::spin_loop();
     }
 
-    unsafe { main() };
+    #[cfg(feature = "onsel4")]
+    axtask::run_init_task();
 
-    #[cfg(feature = "multitask")]
-    axtask::exit(0);
-    #[cfg(not(feature = "multitask"))]
+    #[cfg(feature = "onsel4")]
+    axplat::sel4::handler(cpu_id);
+
+    #[cfg(not(feature = "onsel4"))]
     {
-        debug!("main task exited: exit_code={}", 0);
-        axhal::power::system_off();
+        unsafe { main() };
+
+        #[cfg(feature = "multitask")]
+        axtask::exit(0);
+        #[cfg(not(feature = "multitask"))]
+        {
+            debug!("main task exited: exit_code={}", 0);
+            axhal::power::system_off();
+        }
     }
 }
 
@@ -258,6 +274,9 @@ fn init_interrupt() {
         unsafe { NEXT_DEADLINE.write_current_raw(deadline + PERIODIC_INTERVAL_NANOS) };
         axhal::time::set_oneshot_timer(deadline);
     }
+
+    #[cfg(feature = "onsel4")]
+    update_timer();
 
     axhal::irq::register(axconfig::devices::TIMER_IRQ, || {
         update_timer();

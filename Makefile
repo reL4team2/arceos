@@ -72,6 +72,9 @@ VHOST ?= n
 IP ?= 10.0.2.15
 GW ?= 10.0.2.2
 
+# rel4-linux-kit path
+RLK ?= /workspace/rel4-linux-kit
+
 # App type
 ifeq ($(wildcard $(APP)),)
   $(error Application path "$(APP)" is not valid)
@@ -100,7 +103,14 @@ endif
 ifeq ($(ARCH), x86_64)
   TARGET := x86_64-unknown-none
 else ifeq ($(ARCH), aarch64)
-  TARGET := aarch64-unknown-none-softfloat
+  ifeq ($(MYPLAT), axplat-aarch64-sel4)
+  	# export SEL4_PREFIX=/workspace/rel4-linux-kit/.env/seL4
+	export SEL4_PREFIX=/workspace/.seL4
+	export RUST_TARGET_PATH=/workspace/rel4-linux-kit/support/targets
+	TARGET := aarch64-sel4
+  else
+    TARGET := aarch64-unknown-none-softfloat
+  endif
 else ifeq ($(ARCH), riscv64)
   TARGET := riscv64gc-unknown-none-elf
 else ifeq ($(ARCH), loongarch64)

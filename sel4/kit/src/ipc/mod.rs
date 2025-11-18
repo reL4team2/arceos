@@ -1,0 +1,33 @@
+use common_macros::generate_ipc_send;
+use num_enum::{IntoPrimitive, TryFromPrimitive};
+
+#[derive(Debug, IntoPrimitive, TryFromPrimitive)]
+#[repr(u64)]
+pub enum ServiceEvent {
+    CreateTask = 0x1000,
+    SwitchTask,
+    ExitTask,
+    ExitSystem,
+    MigrateTask,
+}
+
+macro_rules! call_ep {
+    ($msg:expr) => {
+        crate::config::DEFAULT_PARENT_EP.call($msg)
+    };
+}
+
+#[generate_ipc_send(label = ServiceEvent::CreateTask)]
+pub fn create_task(tid: usize, entry: usize, kstack: usize, tls: usize, affinity: usize) -> usize {}
+
+#[generate_ipc_send(label = ServiceEvent::SwitchTask)]
+pub fn switch_task(prev_task: usize, next_task: usize) -> usize {}
+
+#[generate_ipc_send(label = ServiceEvent::ExitTask)]
+pub fn exit_task(task: usize) -> usize {}
+
+#[generate_ipc_send(label = ServiceEvent::ExitSystem)]
+pub fn exit_system() -> usize {}
+
+#[generate_ipc_send(label = ServiceEvent::MigrateTask)]
+pub fn migrate_task(task: usize, cpu_id: usize) -> usize {}

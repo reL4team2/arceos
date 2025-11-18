@@ -72,6 +72,9 @@ log-level-info = ["axlog/log-level-info"]
 log-level-debug = ["axlog/log-level-debug"]
 log-level-trace = ["axlog/log-level-trace"]
 
+# Run arceos on seL4 system
+onsel4 = ["axhal/onsel4", "axruntime/onsel4", "axtask/onsel4", "multitask", "alloc", "page-alloc-4g", "tls"]
+
 [dependencies]
 axruntime = { workspace = true }
 axhal = { workspace = true }

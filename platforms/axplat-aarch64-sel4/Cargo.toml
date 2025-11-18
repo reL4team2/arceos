@@ -1,0 +1,37 @@
+[package]
+name = "axplat-aarch64-sel4"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[features]
+irq = ["axplat/irq", "sel4-if/irq"]
+smp = ["axplat/smp", "kspin/smp"]
+
+[dependencies]
+axconfig-macros = "0.2"
+axplat = { version = "0.2", features = ["onsel4"] }
+kspin = "0.1"
+arm_pl011 = "0.1"
+aarch64-cpu = "10.0"
+int_ratio = "0.1"
+log = "0.4"
+axcpu = "0.2"
+lazyinit = "0.2"
+memory_addr = "0.4"
+percpu = "0.2"
+num_enum = { version = "0.7.3", default-features = false }
+zerocopy = { version = "0.8.20", default-features = false }
+
+sel4-kit = { workspace = true, features = ["alloc"] }
+srv-gate = { workspace = true }
+uart-thread = { workspace = true }
+common = { workspace = true, features = ["alloc"] }
+common-macros = { workspace = true }
+sel4 = { workspace = true }
+axconfig = { workspace = true }
+sel4-oskit = { workspace = true, features = ["alloc"] }
+sel4-if = { workspace = true }

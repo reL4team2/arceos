@@ -16,6 +16,9 @@ use axhal::tls::TlsArea;
 use crate::task_ext::AxTaskExt;
 use crate::{AxCpuMask, AxTask, AxTaskRef, WaitQueue};
 
+#[cfg(feature = "onsel4")]
+use crate::sel4::*;
+
 /// A unique identifier for a thread.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct TaskId(u64);
@@ -77,6 +80,9 @@ pub struct TaskInner {
 
     #[cfg(feature = "tls")]
     tls: TlsArea,
+
+    #[cfg(feature = "onsel4")]
+    sel4task: Option<usize>,
 }
 
 impl TaskId {
@@ -124,7 +130,20 @@ impl TaskInner {
 
         t.entry = Some(Box::into_raw(Box::new(entry)));
         t.ctx_mut().init(task_entry as usize, kstack.top(), tls);
+
+        #[cfg(feature = "onsel4")]
+        {
+            let sel4_task = sel4_create_task(
+                t.id().0 as _,
+                task_entry as usize,
+                kstack.top().into(),
+                tls.into(),
+                axhal::percpu::this_cpu_id(),
+            );
+            t.sel4task = Some(sel4_task);
+        }
         t.kstack = Some(kstack);
+
         if t.name == "idle" {
             t.is_idle = true;
         }
@@ -219,6 +238,37 @@ impl TaskInner {
     pub fn set_cpumask(&self, cpumask: AxCpuMask) {
         *self.cpumask.lock() = cpumask
     }
+
+    #[cfg(feature = "onsel4")]
+    #[inline]
+    pub(crate) fn start(&self) {
+        match &self.sel4task {
+            Some(t) => sel4_start_task(*t),
+            None => error!("sel4task not found"),
+        }
+    }
+
+    #[cfg(feature = "onsel4")]
+    #[inline]
+    pub(crate) fn set_is_init(&mut self, is_init: bool) {
+        self.is_init = is_init;
+    }
+
+    #[cfg(feature = "onsel4")]
+    #[allow(unused)]
+    #[inline]
+    pub(crate) fn suspend(&self) {
+        match &self.sel4task {
+            Some(t) => sel4_stop_task(*t),
+            None => error!("sel4task not found"),
+        }
+    }
+
+    #[cfg(feature = "onsel4")]
+    #[inline]
+    pub(crate) fn sel4_task(&self) -> usize {
+        self.sel4task.expect("Can't find sel4task id")
+    }
 }
 
 // private methods
@@ -250,6 +300,9 @@ impl TaskInner {
             task_ext: AxTaskExt::empty(),
             #[cfg(feature = "tls")]
             tls: TlsArea::alloc(),
+            // seL4 thread
+            #[cfg(feature = "onsel4")]
+            sel4task: None,
         }
     }
 
@@ -261,6 +314,7 @@ impl TaskInner {
     ///
     /// And there is no need to set the `entry`, `kstack` or `tls` fields, as
     /// they will be filled automatically when the task is switches out.
+    #[cfg(not(feature = "onsel4"))]
     pub(crate) fn new_init(name: String) -> Self {
         let mut t = Self::new_common(TaskId::new(), name);
         t.is_init = true;
@@ -388,7 +442,10 @@ impl TaskInner {
     fn current_check_preempt_pending() {
         use kernel_guard::NoPreemptIrqSave;
         let curr = crate::current();
-        if curr.need_resched.load(Ordering::Acquire) && curr.can_preempt(0) {
+        if curr.need_resched.load(Ordering::Acquire)
+            && curr.can_preempt(0)
+            && !sel4_if::is_init_task()
+        {
             // Note: if we want to print log msg during `preempt_resched`, we have to
             // disable preemption here, because the axlog may cause preemption.
             let mut rq = crate::current_run_queue::<NoPreemptIrqSave>();
@@ -404,6 +461,7 @@ impl TaskInner {
         self.wait_for_exit.notify_all(false);
     }
 
+    #[cfg(not(feature = "onsel4"))]
     #[inline]
     pub(crate) const unsafe fn ctx_mut_ptr(&self) -> *mut TaskContext {
         self.ctx.get()
@@ -449,6 +507,14 @@ impl fmt::Debug for TaskInner {
 impl Drop for TaskInner {
     fn drop(&mut self) {
         debug!("task drop: {}", self.id_name());
+        #[cfg(feature = "onsel4")]
+        if let Some(t) = self.sel4task.take() {
+            sel4_exit_task(t);
+
+            if self.name() == "main" {
+                sel4_exit_system();
+            }
+        }
     }
 }
 
@@ -459,7 +525,11 @@ struct TaskStack {
 
 impl TaskStack {
     pub fn alloc(size: usize) -> Self {
+        #[cfg(not(feature = "onsel4"))]
         let layout = Layout::from_size_align(size, 16).unwrap();
+
+        #[cfg(feature = "onsel4")]
+        let layout = Layout::from_size_align(size, 4096).unwrap();
         Self {
             ptr: NonNull::new(unsafe { alloc::alloc::alloc(layout) }).unwrap(),
             layout,
@@ -513,7 +583,7 @@ impl CurrentTask {
 
     pub(crate) unsafe fn init_current(init_task: AxTaskRef) {
         assert!(init_task.is_init());
-        #[cfg(feature = "tls")]
+        #[cfg(all(feature = "tls", not(feature = "onsel4")))]
         axhal::asm::write_thread_pointer(init_task.tls.tls_ptr() as usize);
         let ptr = Arc::into_raw(init_task);
         unsafe {
@@ -538,6 +608,36 @@ impl Deref for CurrentTask {
     }
 }
 
+#[cfg(feature = "onsel4")]
+use common_macros::sel4_thread_entry;
+
+#[cfg(feature = "onsel4")]
+#[sel4_thread_entry]
+extern "C" fn task_entry() -> ! {
+    let task = crate::current();
+    log::debug!(
+        "start task {} on cpu {}",
+        task.id_name(),
+        axhal::percpu::this_cpu_id()
+    );
+    sel4_if::set_sel4_task_id(task.id().0 as _);
+    #[cfg(feature = "smp")]
+    unsafe {
+        // Clear the prev task on CPU before running the task entry function.
+        if !task.is_init() {
+            crate::run_queue::clear_prev_task_on_cpu();
+        }
+    }
+    // Enable irq (if feature "irq" is enabled) before running the task entry function.
+    #[cfg(feature = "irq")]
+    axhal::asm::enable_irqs();
+    if let Some(entry) = task.entry {
+        unsafe { Box::from_raw(entry)() };
+    }
+    crate::exit(0);
+}
+
+#[cfg(not(feature = "onsel4"))]
 extern "C" fn task_entry() -> ! {
     #[cfg(feature = "smp")]
     unsafe {

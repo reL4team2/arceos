@@ -13,7 +13,7 @@ documentation = "https://arceos-org.github.io/arceos/axruntime/index.html"
 default = []
 
 smp = ["axhal/smp", "axtask?/smp"]
-irq = ["axhal/irq", "axtask?/irq", "percpu"]
+irq = ["axhal/irq", "axtask?/irq", "percpu", "kit?/irq"]
 tls = ["axhal/tls", "axtask?/tls"]
 alloc = ["axalloc"]
 paging = ["axhal/paging", "axmm"]
@@ -24,6 +24,8 @@ fs = ["axdriver", "axfs"]
 net = ["axdriver", "axnet"]
 display = ["axdriver", "axdisplay"]
 rtc = []
+
+onsel4 = ["axtask/onsel4", "axhal/onsel4", "common", "sel4", "kit"]
 
 [dependencies]
 axhal = { workspace = true }
@@ -44,3 +46,7 @@ percpu = { version = "0.2", optional = true }
 ctor_bare = "0.2"
 
 chrono = { version = "0.4.38", default-features = false }
+
+common = { workspace = true, features = ["alloc"], optional = true }
+sel4 = { workspace = true, optional = true }
+kit = { workspace = true, optional = true }
