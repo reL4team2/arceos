@@ -35,8 +35,7 @@ unsafe extern "C" {
 static TASK_CSPACE_ALLOCATOR: SpinRaw<IndexAllocator> =
     const { SpinRaw::new(IndexAllocator::new(1, 4096 - 1)) };
 
-static TASK_MAP: SpinRaw<BTreeMap<usize, Arc<SpinRaw<NormalTask>>>> =
-    SpinRaw::new(BTreeMap::new());
+static TASK_MAP: SpinRaw<BTreeMap<usize, Arc<SpinRaw<NormalTask>>>> = SpinRaw::new(BTreeMap::new());
 
 pub fn set_init_task() {
     with_ipc_buffer_mut(|ib| ib.set_user_data(i32::MAX as _))
@@ -368,7 +367,7 @@ impl InitTask {
 
         // reserve tls region on stack
         let sp = stack - 0x100;
-        tcb.tcb_set_tls_base(stack as _)?;
+        tcb.tcb_set_tls_base(sp as _)?;
 
         tcb.tcb_set_sched_params(sel4::init_thread::slot::TCB.cap(), 255, 255)?;
 
