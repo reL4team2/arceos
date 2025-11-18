@@ -1,8 +1,11 @@
+#[cfg(feature = "smp")]
 use crate::task::InitTask;
 use axplat::power::PowerIf;
+#[cfg(feature = "smp")]
 use common_macros::sel4_thread_entry;
 
 use axconfig::{TASK_STACK_SIZE, plat::CPU_NUM};
+#[cfg(feature = "smp")]
 use sel4_kit::slot_manager::LeafSlot;
 
 struct PowerImpl;

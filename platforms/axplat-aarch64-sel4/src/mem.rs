@@ -4,11 +4,11 @@ use axplat::mem::{MemIf, PhysAddr, RawRange, VirtAddr};
 use common::root::translate_addr;
 
 use crate::config::devices::MMIO_RANGES;
-use kit::mem::MemCap;
-use kit::obj::CapSet;
 use lazyinit::LazyInit;
 use sel4::cap;
 use sel4::init_thread;
+use sel4_oskit::capset::CapSet;
+use sel4_oskit::memory::MemoryManager;
 
 const MEM_START_ADDR: usize = axconfig::plat::VIRT_MEMORY_BASE;
 const MEM_SIZE: usize = axconfig::plat::VIRT_MEMORY_SIZE;
@@ -17,7 +17,7 @@ const VIRT_FRAME_ADDR: usize = axconfig::plat::VIRT_FRAME_BASE;
 const VIRT_FRAME_SIZE: usize = axconfig::plat::VIRT_FRAME_SIZE;
 
 /// Global memory space manager for the seL4 platform.
-pub(crate) static MEM_SPACE: LazyInit<MemCap> = LazyInit::new();
+pub(crate) static MEM_SPACE: LazyInit<MemoryManager> = LazyInit::new();
 
 /// Initializes the memory space and sets up the global memory allocator.
 pub(crate) fn init() {
@@ -33,7 +33,7 @@ pub(crate) fn init() {
 
     let vspace = init_thread::slot::VSPACE.cap();
     let untyped = sel4::Cap::from_bits(24);
-    MEM_SPACE.init_once(MemCap::new(
+    MEM_SPACE.init_once(MemoryManager::new(
         vspace,
         untyped,
         VIRT_FRAME_ADDR,

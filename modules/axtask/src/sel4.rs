@@ -1,7 +1,7 @@
-use axplat::sel4::{
+use sel4_if::{
     create_task, destroy_task, is_init_task, migrate_task, start_task, stop_task, switch_task,
 };
-use kit::ipc::{
+use sel4_oskit::ipc::{
     create_task as ipc_create_task, exit_system, exit_task, migrate_task as ipc_migrate_task,
     switch_task as ipc_switch_task,
 };
@@ -21,11 +21,7 @@ pub(crate) fn sel4_create_task(
 }
 
 pub(crate) fn sel4_switch_task(prev_task: usize, next_task: usize) -> usize {
-    if is_init_task() {
-        switch_task(prev_task, next_task)
-    } else {
-        ipc_switch_task(prev_task, next_task)
-    }
+    ipc_switch_task(prev_task, next_task)
 }
 
 pub(crate) fn sel4_exit_task(task: usize) {

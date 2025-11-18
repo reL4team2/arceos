@@ -1,10 +1,10 @@
 //! This module provides the implementation of the IRQ interface for the seL4 platform.
 //! It initializes the IRQ handler, registers IRQs, and provides methods to enable/disable
 use axplat::irq::{HandlerTable, IpiTarget, IrqHandler, IrqIf};
-use kspin::SpinNoIrq;
 use lazyinit::LazyInit;
 
-use kit::irq::IrqCap;
+use sel4::cap::Notification;
+use sel4_oskit::irq::IrqManager;
 
 const MAX_IRQ_COUNT: usize = 1024;
 
@@ -12,7 +12,10 @@ const MAX_IRQ_COUNT: usize = 1024;
 static IRQ_HANDLER_TABLE: HandlerTable<MAX_IRQ_COUNT> = HandlerTable::new();
 
 #[percpu::def_percpu]
-static IRQ_CAPS: LazyInit<SpinNoIrq<IrqCap>> = LazyInit::new();
+static IRQ_CAPS: LazyInit<IrqManager<MAX_IRQ_COUNT>> = LazyInit::new();
+
+#[percpu::def_percpu]
+static IRQ_ENABLED: bool = false;
 
 #[allow(unused_macros)]
 macro_rules! handle_trap {
@@ -32,45 +35,45 @@ macro_rules! handle_trap {
 
 pub(crate) fn init_early(cpu_id: usize) {
     IRQ_CAPS.with_current(|irq_cap| {
-        irq_cap.init_once(SpinNoIrq::new(IrqCap::new(cpu_id, unsafe {
+        irq_cap.init_once(IrqManager::new(cpu_id, unsafe {
             crate::obj::OBJ_ALLOCATOR.current_ref_raw()
-        })));
+        }));
     });
 }
 
 pub(crate) fn init_later(cpu: usize) {
     IRQ_CAPS.with_current(|irq_cap| {
-        irq_cap.lock().init(cpu).unwrap();
+        irq_cap.init(cpu).unwrap();
     });
 }
 
 pub fn handle_irq(badge: usize) {
-    handle_trap!(IRQ, badge as _);
+    if irqs_enabled() {
+        handle_trap!(IRQ, badge as _);
 
-    IRQ_CAPS.with_current(|irq_cap| {
-        irq_cap.lock().ack_irq(badge as _);
-    });
+        IRQ_CAPS.with_current(|irq_cap| {
+            irq_cap.ack_irq(badge as _);
+        });
+    }
 }
 
 #[inline(always)]
 pub fn irqs_enabled() -> bool {
-    unsafe { IRQ_CAPS.current_ref_mut_raw() }
-        .lock()
-        .irqs_enabled()
+    IRQ_ENABLED.read_current()
 }
 
 #[inline(always)]
 pub fn enable_irqs() {
-    IRQ_CAPS.with_current(|irq_cap| {
-        irq_cap.lock().enable_irqs();
-    });
+    unsafe {
+        IRQ_ENABLED.write_current_raw(true);
+    }
 }
 
 #[inline(always)]
 pub fn disable_irqs() {
-    IRQ_CAPS.with_current(|irq_cap| {
-        irq_cap.lock().disable_irqs();
-    });
+    unsafe {
+        IRQ_ENABLED.write_current_raw(false);
+    }
 }
 
 struct IrqIfImpl;
@@ -83,7 +86,7 @@ impl IrqIf for IrqIfImpl {
     fn set_enable(irq: usize, enabled: bool) {
         if enabled {
             IRQ_CAPS.with_current(|irq_cap| {
-                irq_cap.lock().register(irq).unwrap();
+                irq_cap.register_irq(irq).unwrap();
             });
         } else {
             log::warn!(
@@ -100,7 +103,7 @@ impl IrqIf for IrqIfImpl {
     fn register(irq: usize, handler: IrqHandler) -> bool {
         if unsafe { IRQ_HANDLER_TABLE.current_ref_mut_raw() }.register_handler(irq as _, handler) {
             IRQ_CAPS.with_current(|irq_cap| {
-                irq_cap.lock().register(irq).unwrap();
+                irq_cap.register_irq(irq).unwrap();
             });
             return true;
         }
@@ -114,7 +117,9 @@ impl IrqIf for IrqIfImpl {
     /// existing handler if it is registered, `None` otherwise.
     fn unregister(irq: usize) -> Option<IrqHandler> {
         IRQ_CAPS.with_current(|irq_cap| {
-            irq_cap.lock().unregister(irq).unwrap();
+            irq_cap
+                .unregister_irq(irq, Notification::from_bits(0))
+                .unwrap();
         });
         unsafe { IRQ_HANDLER_TABLE.current_ref_mut_raw() }.unregister_handler(irq as _)
     }
@@ -134,7 +139,7 @@ impl IrqIf for IrqIfImpl {
     fn send_ipi(_irq_num: usize, _target: IpiTarget) {}
 }
 
-use axplat::sel4::Sel4IrqIf;
+use sel4_if::Sel4IrqIf;
 
 #[impl_plat_interface]
 impl Sel4IrqIf for IrqIfImpl {

@@ -3,8 +3,8 @@ use crate::irq::handle_irq;
 use crate::task::{create_sel4_task, exit_sel4_task, migrate_sel4_task, switch_sel4_task};
 use common::config::DEFAULT_SERVE_EP;
 use common::{read_types, reply_with};
-use kit::ipc::ServiceEvent;
 use sel4::with_ipc_buffer_mut;
+use sel4_oskit::ipc::ServiceEvent;
 
 use log::*;
 
@@ -66,7 +66,7 @@ pub(crate) fn event_handler(cpu_id: usize) -> ! {
                 }
                 ServiceEvent::MigrateTask => {
                     let (task_ptr, target) = read_types!(ib, usize, usize);
-                    debug!("migrate task on cpu {}", cpu_id);
+                    debug!("migrate task {:#x} on cpu {}", task_ptr, cpu_id);
                     migrate_sel4_task(task_ptr, target);
                     reply_with!(ib, 0);
                 }

@@ -53,6 +53,30 @@ impl kernel_guard::KernelGuardIf for KernelGuardIfImpl {
     }
 }
 
+struct KernelGuardExtIfImpl;
+
+#[crate_interface::impl_interface]
+impl kernel_guard::KernelGuardExtIf for KernelGuardExtIfImpl {
+    #[cfg(not(feature = "irq"))]
+    fn disable_irq() -> usize {
+        0
+    }
+
+    #[cfg(not(feature = "irq"))]
+    fn enable_irq() {}
+
+    #[cfg(feature = "irq")]
+    fn disable_irq() -> usize {
+        sel4_if::disable_irqs();
+        0
+    }
+
+    #[cfg(feature = "irq")]
+    fn enable_irq() {
+        sel4_if::enable_irqs();
+    }
+}
+
 /// Gets the current task, or returns [`None`] if the current task is not
 /// initialized.
 pub fn current_may_uninit() -> Option<CurrentTask> {
@@ -225,4 +249,11 @@ pub fn run_idle() -> ! {
 unsafe extern "C" {
     /// Application's entry point.
     pub fn main();
+}
+
+#[cfg(feature = "onsel4")]
+pub fn run_init_task() {
+    if let Some(curr) = current_may_uninit() {
+        curr.start();
+    }
 }

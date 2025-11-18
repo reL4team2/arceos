@@ -11,18 +11,17 @@ use common::{
 use sel4::{
     CNodeCapData, CapRights,
     cap::{self},
-    init_thread,
-    with_ipc_buffer,
-    with_ipc_buffer_mut,
+    init_thread, with_ipc_buffer, with_ipc_buffer_mut,
 };
 use sel4_kit::slot_manager::LeafSlot;
 
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
-use kspin::SpinNoIrq;
+use kspin::SpinRaw;
 use memory_addr::VirtAddr;
 
-use kit::obj::{CapSet, allocator::IndexAllocator};
+use sel4_oskit::allocator::IndexAllocator;
+use sel4_oskit::capset::CapSet;
 
 use crate::mem::{alloc_ipc_buffer, alloc_ipc_buffer_by_capset, dealloc_ipc_buffer};
 use crate::obj::{alloc_untyped, alloc_untyped_raw, recycle_untyped};
@@ -33,22 +32,25 @@ unsafe extern "C" {
     fn _etbss();
 }
 
-static TASK_CSPACE_ALLOCATOR: SpinNoIrq<IndexAllocator> =
-    const { SpinNoIrq::new(IndexAllocator::new(1, 4096 - 1)) };
+static TASK_CSPACE_ALLOCATOR: SpinRaw<IndexAllocator> =
+    const { SpinRaw::new(IndexAllocator::new(1, 4096 - 1)) };
 
-static TASK_MAP: SpinNoIrq<BTreeMap<usize, Arc<SpinNoIrq<NormalTask>>>> =
-    SpinNoIrq::new(BTreeMap::new());
+static TASK_MAP: SpinRaw<BTreeMap<usize, Arc<SpinRaw<NormalTask>>>> = SpinRaw::new(BTreeMap::new());
 
 pub fn set_init_task() {
-    with_ipc_buffer_mut(|ib| {
-        ib.set_user_data(0x1 as _)
-    })
+    with_ipc_buffer_mut(|ib| ib.set_user_data(i32::MAX as _))
+}
+
+pub fn set_task_id(tid: usize) {
+    with_ipc_buffer_mut(|ib| ib.set_user_data(tid as _))
+}
+
+pub fn get_task_id() -> usize {
+    with_ipc_buffer_mut(|ib| ib.user_data() as usize)
 }
 
 fn init_task() -> bool {
-    with_ipc_buffer(|ib| {
-        ib.user_data() == 0x1
-    })
+    with_ipc_buffer(|ib| ib.user_data() == i32::MAX as u64)
 }
 
 /// Basic unit representing a task in seL4.
@@ -365,7 +367,7 @@ impl InitTask {
 
         // reserve tls region on stack
         let sp = stack - 0x100;
-        tcb.tcb_set_tls_base(stack as _)?;
+        tcb.tcb_set_tls_base(sp as _)?;
 
         tcb.tcb_set_sched_params(sel4::init_thread::slot::TCB.cap(), 255, 255)?;
 
@@ -395,7 +397,7 @@ pub fn create_sel4_task(
     tls: usize,
     cpu_id: usize,
 ) -> usize {
-    let t = Arc::new(SpinNoIrq::new(
+    let t = Arc::new(SpinRaw::new(
         NormalTask::new(tid, entry, stack, 100, tls, cpu_id).unwrap(),
     ));
     TASK_MAP.lock().insert(tid, t);
@@ -437,7 +439,7 @@ pub fn switch_sel4_task(prev_tid: usize, next_tid: usize) {
     }
 }
 
-use axplat::sel4::Sel4TaskIf;
+use sel4_if::Sel4TaskIf;
 
 struct Sel4TaskIfImpl;
 
@@ -470,5 +472,13 @@ impl Sel4TaskIf for Sel4TaskIfImpl {
 
     fn is_init_task() -> bool {
         init_task()
+    }
+
+    fn sel4_task_id() -> usize {
+        get_task_id()
+    }
+
+    fn set_sel4_task_id(tid: usize) {
+        set_task_id(tid);
     }
 }

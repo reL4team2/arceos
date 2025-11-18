@@ -8,7 +8,7 @@ homepage.workspace = true
 repository.workspace = true
 
 [features]
-irq = ["axplat/irq", "kit/irq"]
+irq = ["axplat/irq", "sel4-if/irq"]
 smp = ["axplat/smp", "kspin/smp"]
 
 [dependencies]
@@ -33,4 +33,5 @@ common = { workspace = true, features = ["alloc"] }
 common-macros = { workspace = true }
 sel4 = { workspace = true }
 axconfig = { workspace = true }
-kit = { workspace = true }
+sel4-oskit = { workspace = true, features = ["alloc"] }
+sel4-if = { workspace = true }

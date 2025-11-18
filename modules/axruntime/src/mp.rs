@@ -85,5 +85,8 @@ pub fn rust_main_secondary(cpu_id: usize) -> ! {
     }
 
     #[cfg(feature = "onsel4")]
+    axtask::run_init_task();
+
+    #[cfg(feature = "onsel4")]
     axplat::sel4::handler(cpu_id)
 }

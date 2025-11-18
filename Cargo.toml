@@ -39,9 +39,10 @@ members = [
     "examples/affinity",
     "examples/priority",
     "examples/yield",
+    "examples/parallel",
 
     "platforms/axplat-aarch64-sel4",
-    "sel4/kit",
+    "sel4/kit", "sel4/interface",
 ]
 
 [workspace.package]
@@ -80,16 +81,19 @@ axdma = { path = "modules/axdma" }
 axipi = { path = "modules/axipi" }
 axplat-aarch64-sel4 = { path = "platforms/axplat-aarch64-sel4" }
 kit = { path = "sel4/kit" }
+interface = { path = "sel4/interface" }
 
-sel4-kit = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "2c55dac" }
-srv-gate = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "2c55dac" }
-uart-thread = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "2c55dac" }
-common = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "2c55dac" }
-common-macros = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "2c55dac" }
+sel4-oskit = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "1f120bf" }
+sel4-if = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "1f120bf" }
+sel4-kit = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "1f120bf" }
+srv-gate = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "1f120bf" }
+uart-thread = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "1f120bf" }
+common = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "1f120bf" }
+common-macros = { git = "https://github.com/reL4team2/rel4-linux-kit.git", rev = "1f120bf" }
 sel4 = { git = "https://github.com/seL4/rust-sel4", rev = "5b9ebfd" }
 
 [patch.crates-io]
-kernel_guard = { git = "https://github.com/croakexciting/kernel_guard.git", rev = "f0c503d" }
+kernel_guard = { path = "crates/kernel_guard" }
 axcpu = { git = "https://github.com/croakexciting/axcpu.git", rev = "d40cb74" }
 percpu = { git = "https://github.com/croakexciting/percpu.git", rev = "8d83e54" }
 percpu_macros = { git = "https://github.com/croakexciting/percpu.git", rev = "8d83e54" }

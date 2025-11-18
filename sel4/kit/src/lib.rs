@@ -4,10 +4,10 @@
 
 extern crate alloc;
 
+pub mod asm;
 pub mod config;
 pub mod ipc;
 #[cfg(feature = "irq")]
 pub mod irq;
 pub mod mem;
 pub mod obj;
-pub mod asm;

@@ -207,6 +207,9 @@ pub fn rust_main(cpu_id: usize, arg: usize) -> ! {
     }
 
     #[cfg(feature = "onsel4")]
+    axtask::run_init_task();
+
+    #[cfg(feature = "onsel4")]
     axplat::sel4::handler(cpu_id);
 
     #[cfg(not(feature = "onsel4"))]
