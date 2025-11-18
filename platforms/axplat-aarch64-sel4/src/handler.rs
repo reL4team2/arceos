@@ -74,7 +74,7 @@ pub(crate) fn event_handler(cpu_id: usize) -> ! {
         }
     });
 
-    info!("Exit system");
+    info!("Shutting down...");
     common::root::shutdown()
 }
 
